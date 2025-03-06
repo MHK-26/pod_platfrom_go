@@ -33,7 +33,7 @@ The platform follows a microservices architecture with the following components:
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/your-username/podcast-platform.git
+git clone https://github.com/MHK-26/pod_platfrom_go.git
 cd podcast-platform
 ```
 
