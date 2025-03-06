@@ -18,7 +18,8 @@ The platform follows a microservices architecture with the following components:
 - **Database**: PostgreSQL
 - **API**: REST with potential for gRPC between services
 - **Authentication**: JWT-based with support for social logins
-- **Deployment**: Docker containers with Kubernetes orchestration
+- **Storage**: Local file storage for media files
+- **Deployment**: Docker for containerization, can be deployed to Hostinger
 
 ## Getting Started
 
@@ -46,19 +47,25 @@ cp .env.example .env
 
 3. Update the `.env` file with your configuration values.
 
-4. Create the database:
+4. Create the storage directory for media files:
+
+```bash
+mkdir -p storage/podcasts storage/episodes
+```
+
+5. Create the database:
 
 ```bash
 createdb podcast_platform
 ```
 
-5. Run database migrations:
+6. Run database migrations:
 
 ```bash
 make migrateup
 ```
 
-6. Seed the database with initial data (optional):
+7. Seed the database with initial data (optional):
 
 ```bash
 psql podcast_platform < scripts/seed/seed_data.sql
@@ -76,6 +83,16 @@ make run
 make run-auth-service
 ```
 
+### Docker Support
+
+To run the entire stack with Docker Compose:
+
+```bash
+docker-compose up -d
+```
+
+This will start PostgreSQL, all microservices, and an Nginx reverse proxy.
+
 ### Building the Services
 
 ```bash
@@ -84,16 +101,6 @@ make build
 
 # Build a specific service
 make build-auth-service
-```
-
-### Docker Support
-
-```bash
-# Build Docker images
-make docker-build
-
-# Run Docker containers
-make docker-run
 ```
 
 ## API Documentation
@@ -121,6 +128,10 @@ The database schema includes tables for:
 - Analytics data
 - Monetization features
 
+## Deployment Guide
+
+For deploying to Hostinger, please see the [Deployment Guide](DEPLOYMENT.md).
+
 ## Development Guidelines
 
 - Follow Go best practices and idiomatic Go
@@ -129,6 +140,29 @@ The database schema includes tables for:
 - Document all APIs and functions
 - Use proper error handling and logging
 
+## Directory Structure
+
+```
+/podcast-platform
+├── cmd                       # Application entry points
+│   ├── auth-service          # Authentication service
+│   ├── content-service       # Content service
+│   ├── analytics-service     # Analytics service
+│   ├── recommendation-service# Recommendation service
+│   └── payment-service       # Payment service
+├── pkg                       # Library code
+│   ├── common                # Common utilities, middleware, config
+│   ├── auth                  # Authentication domain
+│   ├── content               # Content domain
+│   ├── analytics             # Analytics domain
+│   ├── recommendation        # Recommendation domain
+│   └── payment               # Payment domain
+├── api                       # API definitions (gRPC, Swagger)
+├── deployments               # Deployment configurations
+├── scripts                   # Scripts for migrations, seeding, etc.
+└── storage                   # Storage for uploaded files
+```
+
 ## Contributing
 
 1. Fork the repository
@@ -136,5 +170,4 @@ The database schema includes tables for:
 3. Commit your changes: `git commit -am 'Add some feature'`
 4. Push to the branch: `git push origin feature/your-feature-name`
 5. Submit a pull request
-
 

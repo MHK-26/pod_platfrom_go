@@ -11,10 +11,11 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	Server ServerConfig
-	DB     DBConfig
-	JWT    JWTConfig
-	AWS    AWSConfig
+	Server   ServerConfig
+	DB       DBConfig
+	JWT      JWTConfig
+	Storage  StorageConfig
+	MediaURL string
 }
 
 // ServerConfig represents the server configuration
@@ -46,13 +47,10 @@ type JWTConfig struct {
 	RefreshExpiryDays   int
 }
 
-// AWSConfig represents the AWS configuration
-type AWSConfig struct {
-	Region          string
-	AccessKeyID     string
-	SecretAccessKey string
-	S3Bucket        string
-	CDNDomain       string
+// StorageConfig represents the file storage configuration
+type StorageConfig struct {
+	BasePath string // Base path for storing files
+	MaxSize  int64  // Maximum file size in bytes
 }
 
 // LoadConfig loads the application configuration from environment variables
@@ -83,12 +81,12 @@ func LoadConfig() (*Config, error) {
 	jwtAccessExpiryMinutes, _ := strconv.Atoi(getEnv("JWT_ACCESS_EXPIRY_MINUTES", "15"))
 	jwtRefreshExpiryDays, _ := strconv.Atoi(getEnv("JWT_REFRESH_EXPIRY_DAYS", "7"))
 
-	// AWS config
-	awsRegion := getEnv("AWS_REGION", "us-east-1")
-	awsAccessKeyID := getEnv("AWS_ACCESS_KEY_ID", "")
-	awsSecretAccessKey := getEnv("AWS_SECRET_ACCESS_KEY", "")
-	awsS3Bucket := getEnv("AWS_S3_BUCKET", "")
-	awsCDNDomain := getEnv("AWS_CDN_DOMAIN", "")
+	// File storage config
+	storagePath := getEnv("STORAGE_PATH", "./storage")
+	maxFileSize, _ := strconv.ParseInt(getEnv("MAX_FILE_SIZE", "52428800"), 10, 64) // 50MB default
+
+	// Media URL for public access
+	mediaURL := getEnv("MEDIA_URL", "http://localhost:8080/media")
 
 	return &Config{
 		Server: ServerConfig{
@@ -114,13 +112,11 @@ func LoadConfig() (*Config, error) {
 			AccessExpiryMinutes: jwtAccessExpiryMinutes,
 			RefreshExpiryDays:   jwtRefreshExpiryDays,
 		},
-		AWS: AWSConfig{
-			Region:          awsRegion,
-			AccessKeyID:     awsAccessKeyID,
-			SecretAccessKey: awsSecretAccessKey,
-			S3Bucket:        awsS3Bucket,
-			CDNDomain:       awsCDNDomain,
+		Storage: StorageConfig{
+			BasePath: storagePath,
+			MaxSize:  maxFileSize,
 		},
+		MediaURL: mediaURL,
 	}, nil
 }
 
