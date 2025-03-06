@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package auth;
+
+option go_package = "github.com/your-username/podcast-platform/api/proto/auth";
+
+import "google/protobuf/timestamp.proto";
+
+service AuthService {
+  // Verify a token and get user information
+  rpc VerifyToken(VerifyTokenRequest) returns (VerifyTokenResponse) {}
+  
+  // Get user details by ID
+  rpc GetUserByID(GetUserByIDRequest) returns (User) {}
+}
+
+message VerifyTokenRequest {
+  string token = 1;
+}
+
+message VerifyTokenResponse {
+  string user_id = 1;
+  string email = 2;
+  string user_type = 3;
+}
+
+message GetUserByIDRequest {
+  string id = 1;
+}
+
+message User {
+  string id = 1;
+  string email = 2;
+  string username = 3;
+  string full_name = 4;
+  string bio = 5;
+  string profile_image_url = 6;
+  string user_type = 7;
+  string auth_provider = 8;
+  string auth_provider_id = 9;
+  bool is_verified = 10;
+  string preferred_language = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+  google.protobuf.Timestamp last_login_at = 14;
+}

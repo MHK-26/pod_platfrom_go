@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package content;
+
+option go_package = "github.com/your-username/podcast-platform/api/proto/content";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+service ContentService {
+  // Podcast operations
+  rpc GetPodcast(GetPodcastRequest) returns (Podcast) {}
+  rpc ListPodcasts(ListPodcastsRequest) returns (ListPodcastsResponse) {}
+  rpc GetPodcastsByUser(GetPodcastsByUserRequest) returns (ListPodcastsResponse) {}
+  
+  // Episode operations
+  rpc GetEpisode(GetEpisodeRequest) returns (Episode) {}
+  rpc ListEpisodes(ListEpisodesRequest) returns (ListEpisodesResponse) {}
+  rpc GetEpisodesByPodcast(GetEpisodesByPodcastRequest) returns (ListEpisodesResponse) {}
+  
+  // Category operations
+  rpc ListCategories(google.protobuf.Empty) returns (ListCategoriesResponse) {}
+}
+
+message GetPodcastRequest {
+  string id = 1;
+}
+
+message ListPodcastsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string search_query = 3;
+  string category_id = 4;
+  string sort_by = 5;
+  string sort_order = 6;
+}
+
+message GetPodcastsByUserRequest {
+  string user_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message ListPodcastsResponse {
+  repeated Podcast podcasts = 1;
+  int32 total_count = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message Podcast {
+  string id = 1;
+  string podcaster_id = 2;
+  string title = 3;
+  string description = 4;
+  string cover_image_url = 5;
+  string rss_url = 6;
+  string website_url = 7;
+  string language = 8;
+  string author = 9;
+  string category = 10;
+  string subcategory = 11;
+  bool explicit = 12;
+  string status = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+  google.protobuf.Timestamp last_synced_at = 16;
+  int32 episode_count = 17;
+  repeated Category categories = 18;
+}
+
+message GetEpisodeRequest {
+  string id = 1;
+}
+
+message ListEpisodesRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string search_query = 3;
+  string sort_by = 4;
+  string sort_order = 5;
+}
+
+message GetEpisodesByPodcastRequest {
+  string podcast_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message ListEpisodesResponse {
+  repeated Episode episodes = 1;
+  int32 total_count = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message Episode {
+  string id = 1;
+  string podcast_id = 2;
+  string title = 3;
+  string description = 4;
+  string audio_url = 5;
+  int32 duration = 6;
+  string cover_image_url = 7;
+  google.protobuf.Timestamp publication_date = 8;
+  string guid = 9;
+  int32 episode_number = 10;
+  int32 season_number = 11;
+  string transcript = 12;
+  string status = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+  string podcast_title = 16;
+  string podcast_author = 17;
+  int32 listen_count = 18;
+}
+
+message Category {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string icon_url = 4;
+}
+
+message ListCategoriesResponse {
+  repeated Category categories = 1;
+}

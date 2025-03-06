@@ -1,0 +1,164 @@
+syntax = "proto3";
+
+package analytics;
+
+option go_package = "github.com/your-username/podcast-platform/api/proto/analytics";
+
+import "google/protobuf/timestamp.proto";
+
+service AnalyticsService {
+  // Listener analytics
+  rpc TrackListen(TrackListenRequest) returns (TrackListenResponse) {}
+  rpc GetEpisodeListens(GetEpisodeListensRequest) returns (GetEpisodeListensResponse) {}
+  rpc GetPodcastListens(GetPodcastListensRequest) returns (GetPodcastListensResponse) {}
+  
+  // Podcaster analytics
+  rpc GetPodcasterAnalytics(GetPodcasterAnalyticsRequest) returns (GetPodcasterAnalyticsResponse) {}
+  rpc GetEpisodePerformance(GetEpisodePerformanceRequest) returns (GetEpisodePerformanceResponse) {}
+  
+  // User analytics
+  rpc GetUserListeningHistory(GetUserListeningHistoryRequest) returns (GetUserListeningHistoryResponse) {}
+}
+
+message TrackListenRequest {
+  string listener_id = 1;
+  string episode_id = 2;
+  string source = 3; // mobile, web, embed
+  int32 duration = 4;
+  bool completed = 5;
+  string ip_address = 6;
+  string user_agent = 7;
+  string country_code = 8;
+  string city = 9;
+}
+
+message TrackListenResponse {
+  bool success = 1;
+  string listen_id = 2;
+}
+
+message GetEpisodeListensRequest {
+  string episode_id = 1;
+  google.protobuf.Timestamp start_date = 2;
+  google.protobuf.Timestamp end_date = 3;
+  string interval = 4; // day, week, month
+}
+
+message GetEpisodeListensResponse {
+  string episode_id = 1;
+  repeated TimeSeriesData time_series = 2;
+  int32 total_listens = 3;
+  int32 unique_listeners = 4;
+  float average_listen_duration = 5;
+  float completion_rate = 6;
+}
+
+message GetPodcastListensRequest {
+  string podcast_id = 1;
+  google.protobuf.Timestamp start_date = 2;
+  google.protobuf.Timestamp end_date = 3;
+  string interval = 4; // day, week, month
+}
+
+message GetPodcastListensResponse {
+  string podcast_id = 1;
+  repeated TimeSeriesData time_series = 2;
+  int32 total_listens = 3;
+  int32 unique_listeners = 4;
+  repeated EpisodeStats episode_stats = 5;
+}
+
+message GetPodcasterAnalyticsRequest {
+  string podcaster_id = 1;
+  google.protobuf.Timestamp start_date = 2;
+  google.protobuf.Timestamp end_date = 3;
+}
+
+message GetPodcasterAnalyticsResponse {
+  string podcaster_id = 1;
+  int32 total_listens = 2;
+  int32 unique_listeners = 3;
+  repeated PodcastStats podcast_stats = 4;
+  repeated GeoStats geo_stats = 5;
+  repeated DeviceStats device_stats = 6;
+}
+
+message GetEpisodePerformanceRequest {
+  string episode_id = 1;
+}
+
+message GetEpisodePerformanceResponse {
+  string episode_id = 1;
+  int32 listens = 2;
+  int32 unique_listeners = 3;
+  float average_listen_duration = 4;
+  float completion_rate = 5;
+  repeated RetentionPoint retention_graph = 6;
+}
+
+message GetUserListeningHistoryRequest {
+  string user_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message GetUserListeningHistoryResponse {
+  string user_id = 1;
+  repeated ListeningHistoryItem history = 2;
+  int32 total_count = 3;
+  int32 page = 4;
+  int32 page_size = 5;
+  int32 total_pages = 6;
+}
+
+message TimeSeriesData {
+  google.protobuf.Timestamp date = 1;
+  int32 count = 2;
+}
+
+message EpisodeStats {
+  string episode_id = 1;
+  string title = 2;
+  int32 listens = 3;
+  float average_listen_duration = 4;
+  float completion_rate = 5;
+}
+
+message PodcastStats {
+  string podcast_id = 1;
+  string title = 2;
+  int32 listens = 3;
+  int32 unique_listeners = 4;
+}
+
+message GeoStats {
+  string country_code = 1;
+  string country_name = 2;
+  int32 listens = 3;
+  repeated CityStats city_stats = 4;
+}
+
+message CityStats {
+  string city = 1;
+  int32 listens = 2;
+}
+
+message DeviceStats {
+  string device_type = 1;
+  int32 count = 2;
+}
+
+message RetentionPoint {
+  int32 second = 1;
+  float retention_percentage = 2;
+}
+
+message ListeningHistoryItem {
+  string episode_id = 1;
+  string episode_title = 2;
+  string podcast_id = 3;
+  string podcast_title = 4;
+  google.protobuf.Timestamp listened_at = 5;
+  int32 duration = 6;
+  bool completed = 7;
+}

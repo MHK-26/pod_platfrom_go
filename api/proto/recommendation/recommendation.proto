@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package recommendation;
+
+option go_package = "github.com/your-username/podcast-platform/api/proto/recommendation";
+
+service RecommendationService {
+  // User-based recommendations
+  rpc GetPersonalizedRecommendations(GetPersonalizedRecommendationsRequest) returns (GetRecommendationsResponse) {}
+  
+  // Similar content recommendations
+  rpc GetSimilarPodcasts(GetSimilarPodcastsRequest) returns (GetRecommendationsResponse) {}
+  rpc GetSimilarEpisodes(GetSimilarEpisodesRequest) returns (GetRecommendationsResponse) {}
+  
+  // Popular content recommendations
+  rpc GetTrendingPodcasts(GetTrendingPodcastsRequest) returns (GetRecommendationsResponse) {}
+  rpc GetPopularInCategory(GetPopularInCategoryRequest) returns (GetRecommendationsResponse) {}
+}
+
+message GetPersonalizedRecommendationsRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  repeated string excluded_ids = 3;
+}
+
+message GetSimilarPodcastsRequest {
+  string podcast_id = 1;
+  int32 limit = 2;
+  repeated string excluded_ids = 3;
+}
+
+message GetSimilarEpisodesRequest {
+  string episode_id = 1;
+  int32 limit = 2;
+  repeated string excluded_ids = 3;
+}
+
+message GetTrendingPodcastsRequest {
+  string time_range = 1; // daily, weekly, monthly
+  int32 limit = 2;
+  repeated string excluded_ids = 3;
+}
+
+message GetPopularInCategoryRequest {
+  string category_id = 1;
+  int32 limit = 2;
+  repeated string excluded_ids = 3;
+}
+
+message GetRecommendationsResponse {
+  repeated RecommendedItem items = 1;
+}
+
+message RecommendedItem {
+  enum ItemType {
+    PODCAST = 0;
+    EPISODE = 1;
+  }
+  
+  string id = 1;
+  ItemType type = 2;
+  string title = 3;
+  string description = 4;
+  string image_url = 5;
+  float score = 6;
+  string podcast_id = 7; // Only for episodes
+  string podcast_title = 8; // Only for episodes
+}
