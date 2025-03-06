@@ -1,6 +1,4 @@
-# Sudanese Podcast Platform
 
-A comprehensive podcast platform tailored for Sudanese users, featuring a mobile app for listeners, a dashboard for podcasters, an admin dashboard for platform management, a backend system, and a website.
 
 ## Project Structure
 
