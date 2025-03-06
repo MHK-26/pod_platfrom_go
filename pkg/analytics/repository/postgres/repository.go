@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -143,10 +144,10 @@ func (r *repository) GetEpisodeListens(ctx context.Context, episodeID uuid.UUID,
 	`
 
 	// Replace placeholders
-	timeSeriesQuery = sqlx.Rebind(sqlx.DOLLAR, 
-		timeSeriesQuery
-			.Replace("${groupBy}", groupBy)
-			.Replace("${timeFormat}", timeFormat))
+	timeSeriesQuery = strings.ReplaceAll(timeSeriesQuery, "${groupBy}", groupBy)
+	timeSeriesQuery = strings.ReplaceAll(timeSeriesQuery, "${timeFormat}", timeFormat)
+	timeSeriesQuery = sqlx.Rebind(sqlx.DOLLAR, timeSeriesQuery)
+	
 
 	rows, err := r.db.QueryxContext(ctx, timeSeriesQuery, episodeID, params.StartDate, params.EndDate)
 	if err != nil {

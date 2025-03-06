@@ -1,0 +1,220 @@
+# api/swagger/swagger.yaml
+swagger: "2.0"
+info:
+  title: "Sudanese Podcast Platform API"
+  description: "API documentation for the Sudanese Podcast Platform"
+  version: "1.0.0"
+  contact:
+    email: "your-email@example.com"
+basePath: "/api/v1"
+schemes:
+  - "http"
+  - "https"
+consumes:
+  - "application/json"
+produces:
+  - "application/json"
+
+securityDefinitions:
+  BearerAuth:
+    type: "apiKey"
+    name: "Authorization"
+    in: "header"
+    description: "Enter your bearer token in the format: Bearer {token}"
+
+tags:
+  - name: "auth"
+    description: "Authentication operations"
+  - name: "podcasts"
+    description: "Podcast operations"
+  - name: "episodes"
+    description: "Episode operations"
+  - name: "categories"
+    description: "Category operations"
+  - name: "analytics"
+    description: "Analytics operations"
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - "auth"
+      summary: "Register a new user"
+      description: "Create a new user account"
+      parameters:
+        - in: "body"
+          name: "body"
+          description: "User registration details"
+          required: true
+          schema:
+            type: "object"
+            required:
+              - "email"
+              - "username"
+              - "password"
+              - "confirm_password"
+              - "user_type"
+            properties:
+              email:
+                type: "string"
+                format: "email"
+              username:
+                type: "string"
+              password:
+                type: "string"
+                format: "password"
+              confirm_password:
+                type: "string"
+                format: "password"
+              full_name:
+                type: "string"
+              user_type:
+                type: "string"
+                enum: ["listener", "podcaster"]
+      responses:
+        201:
+          description: "User created successfully"
+        400:
+          description: "Invalid input"
+        500:
+          description: "Server error"
+
+  /auth/login:
+    post:
+      tags:
+        - "auth"
+      summary: "Login"
+      description: "Authenticate user and get tokens"
+      parameters:
+        - in: "body"
+          name: "body"
+          description: "Login credentials"
+          required: true
+          schema:
+            type: "object"
+            required:
+              - "email"
+              - "password"
+            properties:
+              email:
+                type: "string"
+                format: "email"
+              password:
+                type: "string"
+                format: "password"
+      responses:
+        200:
+          description: "Login successful"
+          schema:
+            type: "object"
+            properties:
+              access_token:
+                type: "string"
+              refresh_token:
+                type: "string"
+              expired_at:
+                type: "string"
+                format: "date-time"
+              user_id:
+                type: "string"
+                format: "uuid"
+              user_type:
+                type: "string"
+        401:
+          description: "Invalid credentials"
+        500:
+          description: "Server error"
+
+  /podcasts:
+    get:
+      tags:
+        - "podcasts"
+      summary: "List podcasts"
+      description: "Get a paginated list of podcasts"
+      parameters:
+        - name: "page"
+          in: "query"
+          description: "Page number"
+          required: false
+          type: "integer"
+          default: 1
+        - name: "page_size"
+          in: "query"
+          description: "Number of items per page"
+          required: false
+          type: "integer"
+          default: 20
+        - name: "query"
+          in: "query"
+          description: "Search query"
+          required: false
+          type: "string"
+        - name: "category"
+          in: "query"
+          description: "Filter by category"
+          required: false
+          type: "string"
+        - name: "language"
+          in: "query"
+          description: "Filter by language"
+          required: false
+          type: "string"
+      responses:
+        200:
+          description: "List of podcasts"
+        500:
+          description: "Server error"
+    
+    post:
+      tags:
+        - "podcasts"
+      summary: "Create podcast"
+      description: "Create a new podcast"
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: "body"
+          name: "body"
+          description: "Podcast details"
+          required: true
+          schema:
+            type: "object"
+            required:
+              - "title"
+              - "description"
+              - "rss_url"
+              - "language"
+              - "category"
+            properties:
+              title:
+                type: "string"
+              description:
+                type: "string"
+              cover_image_url:
+                type: "string"
+              rss_url:
+                type: "string"
+              website_url:
+                type: "string"
+              language:
+                type: "string"
+              category:
+                type: "string"
+              subcategory:
+                type: "string"
+              explicit:
+                type: "boolean"
+      responses:
+        201:
+          description: "Podcast created successfully"
+        400:
+          description: "Invalid input"
+        401:
+          description: "Unauthorized"
+        403:
+          description: "Forbidden - User is not a podcaster"
+        500:
+          description: "Server error"
+
+  # Additional paths would be defined here
+  # This is just a starting point for the Swagger documentation
