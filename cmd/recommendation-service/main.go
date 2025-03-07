@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +21,9 @@ import (
 	recommendationRepo "github.com/your-username/podcast-platform/pkg/recommendation/repository/postgres"
 	recommendationUsecase "github.com/your-username/podcast-platform/pkg/recommendation/usecase"
 	recommendationHttp "github.com/your-username/podcast-platform/pkg/recommendation/delivery/http"
+	recommendationGrpc "github.com/your-username/podcast-platform/pkg/recommendation/delivery/grpc"
+	pb "github.com/your-username/podcast-platform/api/proto/recommendation"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -50,10 +54,8 @@ func main() {
 	recommendationUC := recommendationUsecase.NewUsecase(recommendationRepository, cfg, 10*time.Second)
 	authUC := authUsecase.NewUsecase(nil, cfg, 10*time.Second) // We only need token verification
 
-	// Initialize router
+	// Setup HTTP server
 	router := gin.New()
-
-	// Middlewares
 	router.Use(middleware.LoggingMiddleware())
 	router.Use(gin.Recovery())
 	router.Use(middleware.CORS())
@@ -81,12 +83,12 @@ func main() {
 	// Initialize HTTP handlers
 	recommendationHandler := recommendationHttp.NewHandler(recommendationUC)
 
-	// Register routes
+	// Register HTTP routes
 	v1 := router.Group("/api/v1")
 	recommendationHandler.RegisterRoutes(v1, authMiddleware)
 
-	// Start server
-	srv := &http.Server{
+	// Start HTTP server
+	httpSrv := &http.Server{
 		Addr:         ":" + cfg.Server.Port,
 		Handler:      router,
 		ReadTimeout:  cfg.Server.ReadTimeout,
@@ -94,28 +96,50 @@ func main() {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	// Start the server in a goroutine
+	// Start the HTTP server in a goroutine
 	go func() {
-		logger.Info("Recommendation service listening", logger.Field("port", cfg.Server.Port))
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Failed to start server", logger.Field("error", err))
+		logger.Info("Recommendation HTTP service listening", logger.Field("port", cfg.Server.Port))
+		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatal("Failed to start HTTP server", logger.Field("error", err))
 		}
 	}()
 
-	// Wait for interrupt signal to gracefully shut down the server
+	// Setup gRPC server
+	grpcPort := cfg.Server.Port + "1" // Use port+1 for gRPC
+	lis, err := net.Listen("tcp", ":"+grpcPort)
+	if err != nil {
+		logger.Fatal("Failed to listen for gRPC", logger.Field("error", err))
+	}
+
+	grpcServer := grpc.NewServer()
+	grpcHandler := recommendationGrpc.NewHandler(recommendationUC)
+	pb.RegisterRecommendationServiceServer(grpcServer, grpcHandler)
+
+	// Start the gRPC server in a goroutine
+	go func() {
+		logger.Info("Recommendation gRPC service listening", logger.Field("port", grpcPort))
+		if err := grpcServer.Serve(lis); err != nil {
+			logger.Fatal("Failed to start gRPC server", logger.Field("error", err))
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shut down the servers
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	logger.Info("Shutting down server...")
+	logger.Info("Shutting down servers...")
 
 	// Create a deadline for the shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Shut down the server
-	if err := srv.Shutdown(ctx); err != nil {
-		logger.Fatal("Server forced to shutdown", logger.Field("error", err))
+	// Shut down the HTTP server
+	if err := httpSrv.Shutdown(ctx); err != nil {
+		logger.Fatal("HTTP Server forced to shutdown", logger.Field("error", err))
 	}
 
-	logger.Info("Server exiting")
+	// Shut down the gRPC server
+	grpcServer.GracefulStop()
+
+	logger.Info("Servers exited")
 }
