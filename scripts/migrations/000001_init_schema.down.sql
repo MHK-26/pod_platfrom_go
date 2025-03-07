@@ -2,9 +2,6 @@
 DROP TABLE IF EXISTS ad_impressions;
 DROP TABLE IF EXISTS ad_placements;
 DROP TABLE IF EXISTS advertisements;
-DROP TABLE IF EXISTS payments;
-DROP TABLE IF EXISTS user_subscriptions;
-DROP TABLE IF EXISTS subscription_plans;
 DROP TABLE IF EXISTS listen_events;
 DROP TABLE IF EXISTS playlist_items;
 DROP TABLE IF EXISTS playlists;

@@ -1,12 +1,8 @@
 # Makefile
-.PHONY: run build test clean docker-build docker-run migrateup migratedown
+.PHONY: run build test clean migrate-up migrate-down help swag deps fmt lint sync-rss
 
 # Service names
-SERVICES := auth-service content-service analytics-service recommendation-service payment-service
-
-# Docker configuration
-DOCKER_REPO := your-docker-repo
-VERSION := latest
+SERVICES := auth-service content-service analytics-service recommendation-service
 
 # Database configuration
 DB_USER := postgres
@@ -49,36 +45,12 @@ clean:
 	rm -rf bin/
 	rm -rf vendor/
 
-# Build Docker images for all services
-docker-build:
-	@echo "Building Docker images for all services..."
-	@for service in $(SERVICES); do \
-		docker build -t $(DOCKER_REPO)/$$service:$(VERSION) -f deployments/docker/$$service/Dockerfile .; \
-	done
-
-# Build Docker image for a specific service
-docker-build-%:
-	@echo "Building Docker image for $*..."
-	docker build -t $(DOCKER_REPO)/$*:$(VERSION) -f deployments/docker/$*/Dockerfile .
-
-# Run Docker containers for all services
-docker-run:
-	@echo "Running Docker containers for all services..."
-	@for service in $(SERVICES); do \
-		docker run -d -p 8080:8080 --name $$service $(DOCKER_REPO)/$$service:$(VERSION); \
-	done
-
-# Run Docker container for a specific service
-docker-run-%:
-	@echo "Running Docker container for $*..."
-	docker run -d -p 8080:8080 --name $* $(DOCKER_REPO)/$*:$(VERSION)
-
 # Apply database migrations
-migrateup:
+migrate-up:
 	migrate -path ./scripts/migrations -database "$(DB_URL)" -verbose up
 
 # Rollback database migrations
-migratedown:
+migrate-down:
 	migrate -path ./scripts/migrations -database "$(DB_URL)" -verbose down
 
 # Generate API documentation
@@ -97,6 +69,10 @@ fmt:
 lint:
 	golangci-lint run ./...
 
+# Sync RSS feeds for all podcasts
+sync-rss:
+	go run ./cmd/content-service/main.go -sync-rss
+
 # Help
 help:
 	@echo "Available targets:"
@@ -106,13 +82,10 @@ help:
 	@echo "  build-SERVICE      - Build a specific service (e.g., build-auth-service)"
 	@echo "  test               - Run tests"
 	@echo "  clean              - Clean build artifacts"
-	@echo "  docker-build       - Build Docker images for all services"
-	@echo "  docker-build-SERVICE - Build Docker image for a specific service"
-	@echo "  docker-run         - Run Docker containers for all services"
-	@echo "  docker-run-SERVICE - Run Docker container for a specific service"
-	@echo "  migrateup          - Apply database migrations"
-	@echo "  migratedown        - Rollback database migrations"
+	@echo "  migrate-up         - Apply database migrations"
+	@echo "  migrate-down       - Rollback database migrations"
 	@echo "  swag               - Generate API documentation"
 	@echo "  deps               - Install dependencies"
 	@echo "  fmt                - Format code"
 	@echo "  lint               - Lint code"
+	@echo "  sync-rss           - Manually trigger RSS feed synchronization"

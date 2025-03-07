@@ -2,8 +2,10 @@
 package http
 
 import (
+	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -132,7 +134,7 @@ func (h *Handler) GetPodcastsByUser(c *gin.Context) {
 
 // CreatePodcast godoc
 // @Summary Create a podcast
-// @Description Create a new podcast
+// @Description Create a new podcast from RSS feed
 // @Tags podcasts
 // @Accept json
 // @Produce json
@@ -170,11 +172,26 @@ func (h *Handler) CreatePodcast(c *gin.Context) {
 		return
 	}
 
-	podcast, err := h.usecase.CreatePodcast(c.Request.Context(), userIDParsed, &req)
+	// First parse the RSS feed to get podcast details
+	feed, err := h.usecase.ParseRSSFeed(c.Request.Context(), req.RSSUrl)
 	if err != nil {
-		utils.RespondWithError(c, http.StatusInternalServerError, "Failed to create podcast")
+		utils.RespondWithError(c, http.StatusBadRequest, "Failed to parse RSS feed: "+err.Error())
 		return
 	}
+
+	// Prepare podcast data from RSS feed
+	podcast, err := h.usecase.CreatePodcast(c.Request.Context(), userIDParsed, &req, feed)
+	if err != nil {
+		utils.RespondWithError(c, http.StatusInternalServerError, "Failed to create podcast: "+err.Error())
+		return
+	}
+
+	// Trigger RSS feed sync in the background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		h.usecase.SyncPodcastFromRSS(ctx, podcast.ID)
+	}()
 
 	utils.RespondWithCreated(c, podcast)
 }
@@ -226,6 +243,28 @@ func (h *Handler) UpdatePodcast(c *gin.Context) {
 		return
 	}
 
+	// Check if RSS URL changed
+	var needsSync bool
+	if req.RSSUrl != "" {
+		// Get current podcast to check if URL changed
+		currentPodcast, err := h.usecase.GetPodcastByID(c.Request.Context(), id)
+		if err != nil {
+			utils.RespondWithError(c, http.StatusNotFound, "Podcast not found")
+			return
+		}
+		
+		if currentPodcast.Podcast.RSSUrl != req.RSSUrl {
+			needsSync = true
+			
+			// Validate and parse the new RSS feed
+			_, err := h.usecase.ParseRSSFeed(c.Request.Context(), req.RSSUrl)
+			if err != nil {
+				utils.RespondWithError(c, http.StatusBadRequest, "Failed to parse RSS feed: "+err.Error())
+				return
+			}
+		}
+	}
+
 	podcast, err := h.usecase.UpdatePodcast(c.Request.Context(), id, userIDParsed, &req)
 	if err != nil {
 		if err.Error() == "podcast not found" {
@@ -240,7 +279,84 @@ func (h *Handler) UpdatePodcast(c *gin.Context) {
 		return
 	}
 
+	// If RSS URL was changed, trigger a sync in the background
+	if needsSync {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			h.usecase.SyncPodcastFromRSS(ctx, podcast.ID)
+		}()
+	}
+
 	utils.RespondWithSuccess(c, podcast)
+}
+
+// SyncPodcast godoc
+// @Summary Synchronize podcast from RSS feed
+// @Description Manually trigger a synchronization of podcast content from its RSS feed
+// @Tags podcasts
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Podcast ID"
+// @Success 202 {object} utils.Message
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 401 {object} utils.ErrorResponse
+// @Failure 403 {object} utils.ErrorResponse
+// @Failure 404 {object} utils.ErrorResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /podcasts/{id}/sync [post]
+func (h *Handler) SyncPodcast(c *gin.Context) {
+	idStr, ok := utils.ExtractIDParam(c, "id")
+	if !ok {
+		return
+	}
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		utils.RespondWithError(c, http.StatusBadRequest, "Invalid podcast ID")
+		return
+	}
+
+	// Get user ID from context (set by auth middleware)
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.RespondWithError(c, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	userIDParsed, err := uuid.Parse(userID.(string))
+	if err != nil {
+		utils.RespondWithError(c, http.StatusInternalServerError, "Invalid user ID")
+		return
+	}
+
+	// Check if user is authorized to sync this podcast
+	isAuthorized, err := h.usecase.IsUserAuthorizedForPodcast(c.Request.Context(), id, userIDParsed)
+	if err != nil {
+		if err.Error() == "podcast not found" {
+			utils.RespondWithError(c, http.StatusNotFound, "Podcast not found")
+			return
+		}
+		utils.RespondWithError(c, http.StatusInternalServerError, "Failed to check authorization")
+		return
+	}
+
+	if !isAuthorized {
+		utils.RespondWithError(c, http.StatusForbidden, "Not authorized to sync this podcast")
+		return
+	}
+
+	// Trigger the sync in the background
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		h.usecase.SyncPodcastFromRSS(ctx, id)
+	}()
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"message": "Podcast synchronization started",
+	})
 }
 
 // DeletePodcast godoc
@@ -484,6 +600,86 @@ func (h *Handler) Unsubscribe(c *gin.Context) {
 	utils.RespondWithNoContent(c)
 }
 
+// SavePlaybackPosition godoc
+// @Summary Save playback position
+// @Description Save the current playback position for an episode
+// @Tags episodes
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body models.SavePlaybackPositionRequest true "Save Playback Position Request"
+// @Success 204 "No Content"
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 401 {object} utils.ErrorResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /episodes/playback [post]
+func (h *Handler) SavePlaybackPosition(c *gin.Context) {
+	var req models.SavePlaybackPositionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.RespondWithError(c, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	// Get user ID from context (set by auth middleware)
+	userID, exists := c.Get("user_id")
+	if !exists {
+		utils.RespondWithError(c, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	userIDParsed, err := uuid.Parse(userID.(string))
+	if err != nil {
+		utils.RespondWithError(c, http.StatusInternalServerError, "Invalid user ID")
+		return
+	}
+
+	err = h.usecase.SavePlaybackPosition(c.Request.Context(), userIDParsed, req.EpisodeID, req.Position, req.Completed)
+	if err != nil {
+		utils.RespondWithError(c, http.StatusInternalServerError, "Failed to save playback position")
+		return
+	}
+
+	utils.RespondWithNoContent(c)
+}
+
+// GetSyncStatus godoc
+// @Summary Get RSS feed sync status
+// @Description Get the status of RSS feed synchronization for a podcast
+// @Tags podcasts
+// @Accept json
+// @Produce json
+// @Param podcast_id path string true "Podcast ID"
+// @Success 200 {object} models.RSSFeedSyncLog
+// @Failure 400 {object} utils.ErrorResponse
+// @Failure 404 {object} utils.ErrorResponse
+// @Failure 500 {object} utils.ErrorResponse
+// @Router /podcasts/{podcast_id}/sync-status [get]
+func (h *Handler) GetSyncStatus(c *gin.Context) {
+	podcastIDStr, ok := utils.ExtractIDParam(c, "podcast_id")
+	if !ok {
+		return
+	}
+
+	podcastID, err := uuid.Parse(podcastIDStr)
+	if err != nil {
+		utils.RespondWithError(c, http.StatusBadRequest, "Invalid podcast ID")
+		return
+	}
+
+	syncLog, err := h.usecase.GetLatestSyncLog(c.Request.Context(), podcastID)
+	if err != nil {
+		utils.RespondWithError(c, http.StatusInternalServerError, "Failed to get sync status")
+		return
+	}
+
+	if syncLog == nil {
+		utils.RespondWithError(c, http.StatusNotFound, "No sync logs found for this podcast")
+		return
+	}
+
+	utils.RespondWithSuccess(c, syncLog)
+}
+
 // RegisterRoutes registers all the content routes
 func (h *Handler) RegisterRoutes(router *gin.RouterGroup, authMiddleware gin.HandlerFunc) {
 	// Public routes
@@ -509,15 +705,11 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup, authMiddleware gin.Han
 		protected.POST("/podcasts", h.CreatePodcast)
 		protected.PUT("/podcasts/:id", h.UpdatePodcast)
 		protected.DELETE("/podcasts/:id", h.DeletePodcast)
+		protected.POST("/podcasts/:id/sync", h.SyncPodcast)
 		
 		protected.POST("/podcasts/:podcast_id/subscribe", h.Subscribe)
 		protected.POST("/podcasts/:podcast_id/unsubscribe", h.Unsubscribe)
 		
-		// More protected routes can be added here for:
-		// - Episode management (create, update, delete)
-		// - Playback history
-		// - Likes
-		// - Comments
-		// - Playlists
+		protected.POST("/episodes/playback", h.SavePlaybackPosition)
 	}
 }

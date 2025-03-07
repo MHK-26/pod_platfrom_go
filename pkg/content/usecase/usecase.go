@@ -15,19 +15,24 @@ import (
 // Usecase defines the methods for the content usecase
 type Usecase interface {
 	// Podcast methods
-	CreatePodcast(ctx context.Context, podcasterID uuid.UUID, req *models.CreatePodcastRequest) (*models.Podcast, error)
+	CreatePodcast(ctx context.Context, podcasterID uuid.UUID, req *models.CreatePodcastRequest, feed *models.RSSFeed) (*models.Podcast, error)
 	GetPodcastByID(ctx context.Context, id uuid.UUID) (*models.PodcastResponse, error)
 	GetPodcastsByPodcasterID(ctx context.Context, podcasterID uuid.UUID, page, pageSize int) ([]*models.PodcastResponse, int, error)
 	UpdatePodcast(ctx context.Context, id, podcasterID uuid.UUID, req *models.UpdatePodcastRequest) (*models.Podcast, error)
 	DeletePodcast(ctx context.Context, id, podcasterID uuid.UUID) error
 	ListPodcasts(ctx context.Context, params models.PodcastSearchParams) ([]*models.PodcastResponse, int, error)
+	IsUserAuthorizedForPodcast(ctx context.Context, podcastID, userID uuid.UUID) (bool, error)
+	
+	// RSS feed methods
+	ParseRSSFeed(ctx context.Context, url string) (*models.RSSFeed, error)
+	SyncPodcastFromRSS(ctx context.Context, podcastID uuid.UUID) (*models.RSSFeedSyncResult, error)
+	SyncAllPodcasts(ctx context.Context) ([]models.RSSFeedSyncResult, error)
+	GetLatestSyncLog(ctx context.Context, podcastID uuid.UUID) (*models.RSSFeedSyncLog, error)
+	GetSyncLogs(ctx context.Context, podcastID uuid.UUID, page, pageSize int) ([]*models.RSSFeedSyncLog, int, error)
 	
 	// Episode methods
-	CreateEpisode(ctx context.Context, req *models.CreateEpisodeRequest) (*models.Episode, error)
 	GetEpisodeByID(ctx context.Context, id uuid.UUID) (*models.EpisodeResponse, error)
 	GetEpisodesByPodcastID(ctx context.Context, podcastID uuid.UUID, page, pageSize int) ([]*models.EpisodeResponse, int, error)
-	UpdateEpisode(ctx context.Context, id uuid.UUID, req *models.UpdateEpisodeRequest) (*models.Episode, error)
-	DeleteEpisode(ctx context.Context, id, userID uuid.UUID) error
 	
 	// Category methods
 	GetCategories(ctx context.Context) ([]*models.Category, error)
@@ -48,9 +53,6 @@ type Usecase interface {
 	UnlikeEpisode(ctx context.Context, listenerID, episodeID uuid.UUID) error
 	IsEpisodeLiked(ctx context.Context, listenerID, episodeID uuid.UUID) (bool, error)
 	GetLikedEpisodes(ctx context.Context, listenerID uuid.UUID, page, pageSize int) ([]*models.EpisodeResponse, int, error)
-	
-	// RSS methods
-	SyncPodcastFromRSS(ctx context.Context, podcastID uuid.UUID) error
 }
 
 type usecase struct {

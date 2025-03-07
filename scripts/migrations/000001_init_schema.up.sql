@@ -27,7 +27,7 @@ CREATE TABLE podcasts (
     title VARCHAR(255) NOT NULL,
     description TEXT,
     cover_image_url VARCHAR(255),
-    rss_url VARCHAR(255) UNIQUE,
+    rss_url VARCHAR(255) UNIQUE NOT NULL,
     website_url VARCHAR(255),
     language VARCHAR(10) DEFAULT 'ar-sd',
     author VARCHAR(100),
@@ -163,46 +163,6 @@ CREATE TABLE listen_events (
     city VARCHAR(100)
 );
 
--- Subscription Plans
-CREATE TABLE subscription_plans (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    price_monthly DECIMAL(10, 2) NOT NULL,
-    price_yearly DECIMAL(10, 2) NOT NULL,
-    features JSONB NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- User Subscriptions (Premium)
-CREATE TABLE user_subscriptions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    plan_id UUID NOT NULL REFERENCES subscription_plans(id),
-    status VARCHAR(20) NOT NULL CHECK (status IN ('active', 'canceled', 'expired')),
-    start_date TIMESTAMP WITH TIME ZONE NOT NULL,
-    end_date TIMESTAMP WITH TIME ZONE NOT NULL,
-    is_auto_renew BOOLEAN DEFAULT TRUE,
-    payment_method VARCHAR(50),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Payments Table
-CREATE TABLE payments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    subscription_id UUID REFERENCES user_subscriptions(id),
-    amount DECIMAL(10, 2) NOT NULL,
-    currency VARCHAR(3) DEFAULT 'SDG',
-    payment_method VARCHAR(50) NOT NULL,
-    status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'completed', 'failed', 'refunded')),
-    transaction_id VARCHAR(255),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Advertisements Table
 CREATE TABLE advertisements (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -243,6 +203,17 @@ CREATE TABLE ad_impressions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- RSS Sync Log Table
+CREATE TABLE rss_sync_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    podcast_id UUID NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL CHECK (status IN ('success', 'failure')),
+    episodes_added INTEGER DEFAULT 0,
+    episodes_updated INTEGER DEFAULT 0,
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indices
 CREATE INDEX idx_episodes_podcast_id ON episodes(podcast_id);
 CREATE INDEX idx_playback_history_listener_id ON playback_history(listener_id);
@@ -255,7 +226,6 @@ CREATE INDEX idx_episodes_status ON episodes(status);
 CREATE INDEX idx_podcasts_category ON podcasts(category);
 CREATE INDEX idx_podcasts_language ON podcasts(language);
 CREATE INDEX idx_episodes_publication_date ON episodes(publication_date);
-CREATE INDEX idx_user_subscriptions_user_id ON user_subscriptions(user_id);
-CREATE INDEX idx_user_subscriptions_status ON user_subscriptions(status);
-CREATE INDEX idx_payments_user_id ON payments(user_id);
-CREATE INDEX idx_payments_status ON payments(status);
+CREATE INDEX idx_podcasts_rss_url ON podcasts(rss_url);
+CREATE INDEX idx_rss_sync_logs_podcast_id ON rss_sync_logs(podcast_id);
+CREATE INDEX idx_rss_sync_logs_created_at ON rss_sync_logs(created_at);

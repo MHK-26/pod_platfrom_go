@@ -3,8 +3,8 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,13 +16,20 @@ import (
 	"github.com/your-username/podcast-platform/pkg/common/database"
 	"github.com/your-username/podcast-platform/pkg/common/logger"
 	"github.com/your-username/podcast-platform/pkg/common/middleware"
+	
 	authUsecase "github.com/your-username/podcast-platform/pkg/auth/usecase"
 	contentRepo "github.com/your-username/podcast-platform/pkg/content/repository/postgres"
 	contentUsecase "github.com/your-username/podcast-platform/pkg/content/usecase"
 	contentHttp "github.com/your-username/podcast-platform/pkg/content/delivery/http"
+	contentRSS "github.com/your-username/podcast-platform/pkg/content/rss"
+	contentSync "github.com/your-username/podcast-platform/pkg/content/sync"
 )
 
 func main() {
+	// Define command line flags
+	syncRSS := flag.Bool("sync-rss", false, "Only perform RSS feed synchronization and exit")
+	flag.Parse()
+
 	// Initialize logger
 	logger.Initialize("content-service", "info")
 	defer logger.Close()
@@ -32,9 +39,6 @@ func main() {
 	if err != nil {
 		logger.Fatal("Failed to load config", logger.Field("error", err))
 	}
-
-	// Set Gin mode
-	gin.SetMode(cfg.Server.Mode)
 
 	// Connect to database
 	db, err := database.NewPostgresDB(&cfg.DB)
@@ -46,9 +50,54 @@ func main() {
 	// Initialize repositories
 	contentRepository := contentRepo.NewRepository(db)
 
+	// Initialize RSS parser
+	rssParser := contentRSS.NewParser(30 * time.Second)
+
+	// Initialize sync service
+	syncService := contentSync.NewService(contentRepository, rssParser, db)
+
 	// Initialize usecases
-	contentUC := contentUsecase.NewUsecase(contentRepository, cfg, 10*time.Second)
+	contentUC := contentUsecase.NewUsecase(contentRepository, syncService, cfg, 10*time.Second)
 	authUC := authUsecase.NewUsecase(nil, cfg, 10*time.Second) // We only need token verification
+
+	// If sync-rss flag is set, perform sync and exit
+	if *syncRSS {
+		logger.Info("Starting RSS feed synchronization")
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
+		defer cancel()
+		
+		results, err := contentUC.SyncAllPodcasts(ctx)
+		if err != nil {
+			logger.Fatal("Failed to sync podcasts", logger.Field("error", err))
+		}
+		
+		// Log results
+		successCount := 0
+		for _, result := range results {
+			if result.Success {
+				successCount++
+				logger.Info("Successfully synced podcast", 
+					logger.Field("podcast_id", result.PodcastID),
+					logger.Field("episodes_added", result.EpisodesAdded),
+					logger.Field("episodes_updated", result.EpisodesUpdated))
+			} else {
+				logger.Error("Failed to sync podcast", 
+					logger.Field("podcast_id", result.PodcastID),
+					logger.Field("error", result.ErrorMessage))
+			}
+		}
+		
+		logger.Info("RSS feed synchronization completed", 
+			logger.Field("total", len(results)),
+			logger.Field("success", successCount),
+			logger.Field("failed", len(results) - successCount))
+		
+		return
+	}
+
+	// Set Gin mode
+	gin.SetMode(cfg.Server.Mode)
 
 	// Initialize router
 	router := gin.New()
@@ -99,6 +148,36 @@ func main() {
 		logger.Info("Content service listening", logger.Field("port", cfg.Server.Port))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("Failed to start server", logger.Field("error", err))
+		}
+	}()
+	
+	// Start a background goroutine to sync RSS feeds periodically
+	go func() {
+		// Wait for initial delay before starting
+		time.Sleep(1 * time.Minute)
+		
+		// Create a ticker to run every 6 hours
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		
+		// Run sync once at startup
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
+		logger.Info("Running initial RSS feed sync")
+		_, err := contentUC.SyncAllPodcasts(ctx)
+		if err != nil {
+			logger.Error("Failed to sync podcasts", logger.Field("error", err))
+		}
+		cancel()
+		
+		// Run sync at regular intervals
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
+			logger.Info("Running scheduled RSS feed sync")
+			_, err := contentUC.SyncAllPodcasts(ctx)
+			if err != nil {
+				logger.Error("Failed to sync podcasts", logger.Field("error", err))
+			}
+			cancel()
 		}
 	}()
 

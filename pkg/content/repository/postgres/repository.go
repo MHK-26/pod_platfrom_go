@@ -14,6 +14,7 @@ import (
 	"github.com/your-username/podcast-platform/pkg/content/models"
 )
 
+
 // Repository defines the methods for the content repository
 type Repository interface {
 	// Podcast methods
@@ -23,14 +24,29 @@ type Repository interface {
 	UpdatePodcast(ctx context.Context, podcast *models.Podcast) error
 	DeletePodcast(ctx context.Context, id uuid.UUID) error
 	ListPodcasts(ctx context.Context, params models.PodcastSearchParams) ([]*models.Podcast, int, error)
+	GetActivePodcasts(ctx context.Context) ([]*models.Podcast, error)
+	GetPodcastByRSSURL(ctx context.Context, rssURL string) (*models.Podcast, error)
+	IsUserAuthorizedForPodcast(ctx context.Context, podcastID, userID uuid.UUID) (bool, error)
 	
 	// Episode methods
 	CreateEpisode(ctx context.Context, episode *models.Episode) error
 	GetEpisodeByID(ctx context.Context, id uuid.UUID) (*models.Episode, error)
 	GetEpisodesByPodcastID(ctx context.Context, podcastID uuid.UUID, page, pageSize int) ([]*models.Episode, int, error)
+	GetAllEpisodesByPodcastID(ctx context.Context, podcastID uuid.UUID) ([]*models.Episode, error)
 	UpdateEpisode(ctx context.Context, episode *models.Episode) error
 	DeleteEpisode(ctx context.Context, id uuid.UUID) error
 	ListEpisodes(ctx context.Context, params models.EpisodeSearchParams) ([]*models.Episode, int, error)
+	
+	// Transaction methods for feed sync
+	UpdatePodcastTx(ctx context.Context, tx *sqlx.Tx, podcast *models.Podcast) error
+	GetAllEpisodesByPodcastIDTx(ctx context.Context, tx *sqlx.Tx, podcastID uuid.UUID) ([]*models.Episode, error)
+	CreateEpisodeTx(ctx context.Context, tx *sqlx.Tx, episode *models.Episode) error
+	UpdateEpisodeTx(ctx context.Context, tx *sqlx.Tx, episode *models.Episode) error
+	
+	// RSS sync log methods
+	CreateSyncLog(ctx context.Context, log *models.RSSFeedSyncLog) error
+	GetLatestSyncLog(ctx context.Context, podcastID uuid.UUID) (*models.RSSFeedSyncLog, error)
+	GetSyncLogs(ctx context.Context, podcastID uuid.UUID, page, pageSize int) ([]*models.RSSFeedSyncLog, int, error)
 	
 	// Category methods
 	GetCategories(ctx context.Context) ([]*models.Category, error)
@@ -69,7 +85,6 @@ type Repository interface {
 	RemoveFromPlaylist(ctx context.Context, playlistID, episodeID uuid.UUID) error
 	GetPlaylistItems(ctx context.Context, playlistID uuid.UUID, page, pageSize int) ([]*models.PlaylistItem, int, error)
 }
-
 type repository struct {
 	db *sqlx.DB
 }
@@ -609,4 +624,312 @@ func (r *repository) GetPlaylistItems(ctx context.Context, playlistID uuid.UUID,
 	}
 
 	return items, totalCount, nil
+}
+// pkg/content/repository/postgres/repository.go (implementation of RSS sync methods)
+
+// GetActivePodcasts gets all active podcasts
+func (r *repository) GetActivePodcasts(ctx context.Context) ([]*models.Podcast, error) {
+	query := `
+		SELECT 
+			id, podcaster_id, title, description, cover_image_url, rss_url, website_url,
+			language, author, category, subcategory, explicit, status, created_at, updated_at,
+			last_synced_at
+		FROM podcasts
+		WHERE status = 'active' AND rss_url != ''
+	`
+
+	var podcasts []*models.Podcast
+	err := r.db.SelectContext(ctx, &podcasts, query)
+	return podcasts, err
+}
+
+// GetPodcastByRSSURL gets a podcast by RSS URL
+func (r *repository) GetPodcastByRSSURL(ctx context.Context, rssURL string) (*models.Podcast, error) {
+	query := `
+		SELECT 
+			id, podcaster_id, title, description, cover_image_url, rss_url, website_url,
+			language, author, category, subcategory, explicit, status, created_at, updated_at,
+			last_synced_at
+		FROM podcasts
+		WHERE rss_url = $1
+	`
+
+	var podcast models.Podcast
+	err := r.db.GetContext(ctx, &podcast, query, rssURL)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // Return nil if not found, not an error
+		}
+		return nil, err
+	}
+
+	return &podcast, nil
+}
+
+// IsUserAuthorizedForPodcast checks if a user is authorized to manage a podcast
+func (r *repository) IsUserAuthorizedForPodcast(ctx context.Context, podcastID, userID uuid.UUID) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM podcasts
+			WHERE id = $1 AND podcaster_id = $2
+		)
+	`
+
+	var authorized bool
+	err := r.db.GetContext(ctx, &authorized, query, podcastID, userID)
+	return authorized, err
+}
+
+// UpdatePodcastTx updates a podcast within a transaction
+func (r *repository) UpdatePodcastTx(ctx context.Context, tx *sqlx.Tx, podcast *models.Podcast) error {
+	query := `
+		UPDATE podcasts
+		SET
+			title = $2,
+			description = $3,
+			cover_image_url = $4,
+			rss_url = $5,
+			website_url = $6,
+			language = $7,
+			author = $8,
+			category = $9,
+			subcategory = $10,
+			explicit = $11,
+			status = $12,
+			updated_at = $13,
+			last_synced_at = $14
+		WHERE id = $1
+	`
+
+	_, err := tx.ExecContext(
+		ctx,
+		query,
+		podcast.ID,
+		podcast.Title,
+		podcast.Description,
+		podcast.CoverImageURL,
+		podcast.RSSUrl,
+		podcast.WebsiteURL,
+		podcast.Language,
+		podcast.Author,
+		podcast.Category,
+		podcast.Subcategory,
+		podcast.Explicit,
+		podcast.Status,
+		podcast.UpdatedAt,
+		podcast.LastSyncedAt,
+	)
+
+	return err
+}
+
+// GetAllEpisodesByPodcastIDTx gets all episodes for a podcast within a transaction
+func (r *repository) GetAllEpisodesByPodcastIDTx(ctx context.Context, tx *sqlx.Tx, podcastID uuid.UUID) ([]*models.Episode, error) {
+	query := `
+		SELECT
+			id, podcast_id, title, description, audio_url, duration, cover_image_url,
+			publication_date, guid, episode_number, season_number, transcript, status,
+			created_at, updated_at
+		FROM episodes
+		WHERE podcast_id = $1
+	`
+
+	var episodes []*models.Episode
+	err := tx.SelectContext(ctx, &episodes, query, podcastID)
+	return episodes, err
+}
+
+// GetAllEpisodesByPodcastID gets all episodes for a podcast
+func (r *repository) GetAllEpisodesByPodcastID(ctx context.Context, podcastID uuid.UUID) ([]*models.Episode, error) {
+	query := `
+		SELECT
+			id, podcast_id, title, description, audio_url, duration, cover_image_url,
+			publication_date, guid, episode_number, season_number, transcript, status,
+			created_at, updated_at
+		FROM episodes
+		WHERE podcast_id = $1
+	`
+
+	var episodes []*models.Episode
+	err := r.db.SelectContext(ctx, &episodes, query, podcastID)
+	return episodes, err
+}
+
+// CreateEpisodeTx creates an episode within a transaction
+func (r *repository) CreateEpisodeTx(ctx context.Context, tx *sqlx.Tx, episode *models.Episode) error {
+	query := `
+		INSERT INTO episodes (
+			id, podcast_id, title, description, audio_url, duration, cover_image_url,
+			publication_date, guid, episode_number, season_number, transcript, status,
+			created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+		) RETURNING id
+	`
+
+	if episode.ID == uuid.Nil {
+		episode.ID = uuid.New()
+	}
+
+	now := time.Now()
+	if episode.CreatedAt.IsZero() {
+		episode.CreatedAt = now
+	}
+	if episode.UpdatedAt.IsZero() {
+		episode.UpdatedAt = now
+	}
+
+	err := tx.QueryRowContext(
+		ctx,
+		query,
+		episode.ID,
+		episode.PodcastID,
+		episode.Title,
+		episode.Description,
+		episode.AudioURL,
+		episode.Duration,
+		episode.CoverImageURL,
+		episode.PublicationDate,
+		episode.GUID,
+		episode.EpisodeNumber,
+		episode.SeasonNumber,
+		episode.Transcript,
+		episode.Status,
+		episode.CreatedAt,
+		episode.UpdatedAt,
+	).Scan(&episode.ID)
+
+	return err
+}
+
+// UpdateEpisodeTx updates an episode within a transaction
+func (r *repository) UpdateEpisodeTx(ctx context.Context, tx *sqlx.Tx, episode *models.Episode) error {
+	query := `
+		UPDATE episodes
+		SET
+			title = $2,
+			description = $3,
+			audio_url = $4,
+			duration = $5,
+			cover_image_url = $6,
+			publication_date = $7,
+			guid = $8,
+			episode_number = $9,
+			season_number = $10,
+			transcript = $11,
+			status = $12,
+			updated_at = $13
+		WHERE id = $1
+	`
+
+	_, err := tx.ExecContext(
+		ctx,
+		query,
+		episode.ID,
+		episode.Title,
+		episode.Description,
+		episode.AudioURL,
+		episode.Duration,
+		episode.CoverImageURL,
+		episode.PublicationDate,
+		episode.GUID,
+		episode.EpisodeNumber,
+		episode.SeasonNumber,
+		episode.Transcript,
+		episode.Status,
+		episode.UpdatedAt,
+	)
+
+	return err
+}
+
+// CreateSyncLog creates a new RSS feed sync log
+func (r *repository) CreateSyncLog(ctx context.Context, log *models.RSSFeedSyncLog) error {
+	query := `
+		INSERT INTO rss_sync_logs (
+			id, podcast_id, status, episodes_added, episodes_updated, error_message, created_at
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7
+		) RETURNING id
+	`
+
+	if log.ID == uuid.Nil {
+		log.ID = uuid.New()
+	}
+
+	if log.CreatedAt.IsZero() {
+		log.CreatedAt = time.Now()
+	}
+
+	err := r.db.QueryRowContext(
+		ctx,
+		query,
+		log.ID,
+		log.PodcastID,
+		log.Status,
+		log.EpisodesAdded,
+		log.EpisodesUpdated,
+		log.ErrorMessage,
+		log.CreatedAt,
+	).Scan(&log.ID)
+
+	return err
+}
+
+// GetLatestSyncLog gets the latest sync log for a podcast
+func (r *repository) GetLatestSyncLog(ctx context.Context, podcastID uuid.UUID) (*models.RSSFeedSyncLog, error) {
+	query := `
+		SELECT
+			id, podcast_id, status, episodes_added, episodes_updated, error_message, created_at
+		FROM rss_sync_logs
+		WHERE podcast_id = $1
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	var log models.RSSFeedSyncLog
+	err := r.db.GetContext(ctx, &log, query, podcastID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // Return nil if not found, not an error
+		}
+		return nil, err
+	}
+
+	return &log, nil
+}
+
+// GetSyncLogs gets the sync logs for a podcast
+func (r *repository) GetSyncLogs(ctx context.Context, podcastID uuid.UUID, page, pageSize int) ([]*models.RSSFeedSyncLog, int, error) {
+	// Get total count
+	countQuery := `
+		SELECT COUNT(*)
+		FROM rss_sync_logs
+		WHERE podcast_id = $1
+	`
+
+	var totalCount int
+	err := r.db.GetContext(ctx, &totalCount, countQuery, podcastID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get logs with pagination
+	offset := (page - 1) * pageSize
+	logsQuery := `
+		SELECT
+			id, podcast_id, status, episodes_added, episodes_updated, error_message, created_at
+		FROM rss_sync_logs
+		WHERE podcast_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+
+	var logs []*models.RSSFeedSyncLog
+	err = r.db.SelectContext(ctx, &logs, logsQuery, podcastID, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return logs, totalCount, nil
 }

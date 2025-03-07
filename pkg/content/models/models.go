@@ -120,61 +120,74 @@ type PlaylistItem struct {
 	CoverImageURL  string    `json:"cover_image_url" db:"cover_image_url"`
 }
 
+// RSSFeedItem represents an item from an RSS feed
+type RSSFeedItem struct {
+	Title           string    `json:"title"`
+	Description     string    `json:"description"`
+	AudioURL        string    `json:"audio_url"`
+	Duration        int       `json:"duration"`
+	GUID            string    `json:"guid"`
+	PublicationDate time.Time `json:"publication_date"`
+	CoverImageURL   string    `json:"cover_image_url"`
+	EpisodeNumber   *int      `json:"episode_number"`
+	SeasonNumber    *int      `json:"season_number"`
+}
+
+// RSSFeed represents a parsed RSS feed
+type RSSFeed struct {
+	Title        string        `json:"title"`
+	Description  string        `json:"description"`
+	Language     string        `json:"language"`
+	Author       string        `json:"author"`
+	CoverImageURL string       `json:"cover_image_url"`
+	WebsiteURL   string        `json:"website_url"`
+	Category     string        `json:"category"`
+	Subcategory  string        `json:"subcategory"`
+	Explicit     bool          `json:"explicit"`
+	Items        []RSSFeedItem `json:"items"`
+}
+
+// RSSFeedSyncResult represents the result of an RSS feed sync operation
+type RSSFeedSyncResult struct {
+	Success        bool      `json:"success"`
+	PodcastID      uuid.UUID `json:"podcast_id"`
+	EpisodesAdded  int       `json:"episodes_added"`
+	EpisodesUpdated int      `json:"episodes_updated"`
+	ErrorMessage   string    `json:"error_message,omitempty"`
+}
+
+// RSSFeedSyncLog represents a log entry for an RSS feed sync operation
+type RSSFeedSyncLog struct {
+	ID              uuid.UUID `json:"id" db:"id"`
+	PodcastID       uuid.UUID `json:"podcast_id" db:"podcast_id"`
+	Status          string    `json:"status" db:"status"`
+	EpisodesAdded   int       `json:"episodes_added" db:"episodes_added"`
+	EpisodesUpdated int       `json:"episodes_updated" db:"episodes_updated"`
+	ErrorMessage    string    `json:"error_message" db:"error_message"`
+	CreatedAt       time.Time `json:"created_at" db:"created_at"`
+}
+
 // Request/Response structures
 
 // CreatePodcastRequest represents a request to create a podcast
 type CreatePodcastRequest struct {
-	Title        string   `json:"title" validate:"required"`
-	Description  string   `json:"description" validate:"required"`
-	CoverImageURL string  `json:"cover_image_url"`
-	RSSUrl       string   `json:"rss_url" validate:"required,url"`
-	WebsiteURL   string   `json:"website_url"`
-	Language     string   `json:"language" validate:"required"`
-	Category     string   `json:"category" validate:"required"`
-	Subcategory  string   `json:"subcategory"`
-	Explicit     bool     `json:"explicit"`
+	RSSUrl       string  `json:"rss_url" validate:"required,url"`
+	Description  string  `json:"description"`
+	Category     string  `json:"category"`
+	Subcategory  string  `json:"subcategory"`
 }
 
 // UpdatePodcastRequest represents a request to update a podcast
 type UpdatePodcastRequest struct {
-	Title        string  `json:"title"`
 	Description  string  `json:"description"`
-	CoverImageURL string `json:"cover_image_url"`
-	WebsiteURL   string  `json:"website_url"`
-	Language     string  `json:"language"`
+	RSSUrl       string  `json:"rss_url" validate:"url"`
 	Category     string  `json:"category"`
 	Subcategory  string  `json:"subcategory"`
-	Explicit     bool    `json:"explicit"`
 }
 
 // SyncPodcastRequest represents a request to sync a podcast
 type SyncPodcastRequest struct {
 	PodcastID uuid.UUID `json:"podcast_id" validate:"required"`
-}
-
-// CreateEpisodeRequest represents a request to create an episode
-type CreateEpisodeRequest struct {
-	PodcastID       uuid.UUID `json:"podcast_id" validate:"required"`
-	Title           string    `json:"title" validate:"required"`
-	Description     string    `json:"description" validate:"required"`
-	AudioURL        string    `json:"audio_url" validate:"required,url"`
-	Duration        int       `json:"duration" validate:"required,min=1"`
-	CoverImageURL   string    `json:"cover_image_url"`
-	PublicationDate time.Time `json:"publication_date"`
-	EpisodeNumber   *int      `json:"episode_number"`
-	SeasonNumber    *int      `json:"season_number"`
-	Transcript      string    `json:"transcript"`
-}
-
-// UpdateEpisodeRequest represents a request to update an episode
-type UpdateEpisodeRequest struct {
-	Title           string    `json:"title"`
-	Description     string    `json:"description"`
-	CoverImageURL   string    `json:"cover_image_url"`
-	PublicationDate time.Time `json:"publication_date"`
-	EpisodeNumber   *int      `json:"episode_number"`
-	SeasonNumber    *int      `json:"season_number"`
-	Transcript      string    `json:"transcript"`
 }
 
 // PodcastResponse represents a podcast response with additional data
