@@ -161,647 +161,6 @@ func (r *repository) GetPodcastByID(ctx context.Context, id uuid.UUID) (*models.
 	return &podcast, nil
 }
 
-// GetPodcastsByPodcasterID gets podcasts by podcaster ID
-func (r *repository) GetPodcastsByPodcasterID(ctx context.Context, podcasterID uuid.UUID, page, pageSize int) ([]*models.Podcast, int, error) {
-	query := `
-		SELECT
-			id, podcaster_id, title, description, cover_image_url, rss_url, website_url,
-			language, author, category, subcategory, explicit, status, created_at, updated_at,
-			last_synced_at
-		FROM podcasts
-		WHERE podcaster_id = $1
-		ORDER BY created_at DESC
-		LIMIT $2 OFFSET $3
-	`
-
-	var podcasts []*models.Podcast
-	offset := (page - 1) * pageSize
-	err := r.db.SelectContext(ctx, &podcasts, query, podcasterID, pageSize, offset)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// Get total count
-	countQuery := `SELECT COUNT(*) FROM podcasts WHERE podcaster_id = $1`
-	var count int
-	err = r.db.GetContext(ctx, &count, countQuery, podcasterID)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// Get categories for each podcast
-	for _, podcast := range podcasts {
-		categories, err := r.GetCategoriesByPodcastID(ctx, podcast.ID)
-		if err != nil {
-			return nil, 0, err
-		}
-		podcast.Categories = categories
-		
-		// Get episode count
-		episodeCountQuery := `SELECT COUNT(*) FROM episodes WHERE podcast_id = $1 AND status = 'active'`
-		var episodeCount int
-		err = r.db.GetContext(ctx, &episodeCount, episodeCountQuery, podcast.ID)
-		if err != nil {
-			return nil, 0, err
-		}
-		podcast.EpisodeCount = episodeCount
-	}
-
-	return podcasts, count, nil
-}
-
-// GetCategoriesByPodcastID gets categories by podcast ID
-func (r *repository) GetCategoriesByPodcastID(ctx context.Context, podcastID uuid.UUID) ([]*models.Category, error) {
-	query := `
-		SELECT c.id, c.name, c.description, c.icon_url
-		FROM categories c
-		JOIN podcast_categories pc ON c.id = pc.category_id
-		WHERE pc.podcast_id = $1
-	`
-
-	var categories []*models.Category
-	err := r.db.SelectContext(ctx, &categories, query, podcastID)
-	if err != nil {
-		return nil, err
-	}
-
-	return categories, nil
-}
-
-// UpdatePodcast updates a podcast
-func (r *repository) UpdatePodcast(ctx context.Context, podcast *models.Podcast) error {
-	query := `
-		UPDATE podcasts SET
-			title = $1,
-			description = $2,
-			cover_image_url = $3,
-			website_url = $4,
-			language = $5,
-			author = $6,
-			category = $7,
-			subcategory = $8,
-			explicit = $9,
-			status = $10,
-			updated_at = $11
-		WHERE id = $12
-	`
-	
-	podcast.UpdatedAt = time.Now()
-	
-	_, err := r.db.ExecContext(
-		ctx,
-		query,
-		podcast.Title,
-		podcast.Description,
-		podcast.CoverImageURL,
-		podcast.WebsiteURL,
-		podcast.Language,
-		podcast.Author,
-		podcast.Category,
-		podcast.Subcategory,
-		podcast.Explicit,
-		podcast.Status,
-		podcast.UpdatedAt,
-		podcast.ID,
-	)
-	
-	return err
-}
-
-// DeletePodcast deletes a podcast
-func (r *repository) DeletePodcast(ctx context.Context, id uuid.UUID) error {
-	query := `DELETE FROM podcasts WHERE id = $1`
-	_, err := r.db.ExecContext(ctx, query, id)
-	return err
-}
-
-// ListPodcasts lists podcasts with optional filtering
-func (r *repository) ListPodcasts(ctx context.Context, params models.PodcastSearchParams) ([]*models.Podcast, int, error) {
-	// Base query
-	baseQuery := `
-		SELECT
-			id, podcaster_id, title, description, cover_image_url, rss_url, website_url,
-			language, author, category, subcategory, explicit, status, created_at, updated_at,
-			last_synced_at
-		FROM podcasts
-		WHERE status = 'active'
-	`
-	
-	// Count query
-	countQuery := `
-		SELECT COUNT(*)
-		FROM podcasts
-		WHERE status = 'active'
-	`
-	
-	// Add filters
-	var filters []string
-	var args []interface{}
-	argIndex := 1
-	
-	if params.Query != "" {
-		filters = append(filters, fmt.Sprintf("(title ILIKE $%d OR description ILIKE $%d)", argIndex, argIndex))
-		args = append(args, "%"+params.Query+"%")
-		argIndex++
-	}
-	
-	if params.Category != "" {
-		filters = append(filters, fmt.Sprintf("category = $%d", argIndex))
-		args = append(args, params.Category)
-		argIndex++
-	}
-	
-	if params.Language != "" {
-		filters = append(filters, fmt.Sprintf("language = $%d", argIndex))
-		args = append(args, params.Language)
-		argIndex++
-	}
-	
-	// Apply filters to queries
-	if len(filters) > 0 {
-		filterStr := strings.Join(filters, " AND ")
-		baseQuery += " AND " + filterStr
-		countQuery += " AND " + filterStr
-	}
-	
-	// Add sorting
-	if params.SortBy != "" {
-		sortOrder := "ASC"
-		if params.SortOrder == "desc" {
-			sortOrder = "DESC"
-		}
-		
-		// Validate sort field
-		validSortFields := map[string]string{
-			"title":      "title",
-			"created_at": "created_at",
-			"updated_at": "updated_at",
-		}
-		
-		if sortField, ok := validSortFields[params.SortBy]; ok {
-			baseQuery += fmt.Sprintf(" ORDER BY %s %s", sortField, sortOrder)
-		} else {
-			baseQuery += " ORDER BY created_at DESC"
-		}
-	} else {
-		baseQuery += " ORDER BY created_at DESC"
-	}
-	
-	// Add pagination
-	baseQuery += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
-	args = append(args, params.PageSize, (params.Page-1)*params.PageSize)
-	
-	// Get total count
-	var totalCount int
-	err := r.db.GetContext(ctx, &totalCount, countQuery, args[:argIndex-1]...)
-	if err != nil {
-		return nil, 0, err
-	}
-	
-	// Get podcasts
-	var podcasts []*models.Podcast
-	err = r.db.SelectContext(ctx, &podcasts, baseQuery, args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	
-	// Get categories and episode counts for each podcast
-	for _, podcast := range podcasts {
-		categories, err := r.GetCategoriesByPodcastID(ctx, podcast.ID)
-		if err != nil {
-			return nil, 0, err
-		}
-		podcast.Categories = categories
-		
-		// Get episode count
-		episodeCountQuery := `SELECT COUNT(*) FROM episodes WHERE podcast_id = $1 AND status = 'active'`
-		var episodeCount int
-		err = r.db.GetContext(ctx, &episodeCount, episodeCountQuery, podcast.ID)
-		if err != nil {
-			return nil, 0, err
-		}
-		podcast.EpisodeCount = episodeCount
-	}
-	
-	return podcasts, totalCount, nil
-}
-
-// CreateEpisode creates a new episode
-func (r *repository) CreateEpisode(ctx context.Context, episode *models.Episode) error {
-	query := `
-		INSERT INTO episodes (
-			id, podcast_id, title, description, audio_url, duration, cover_image_url,
-			publication_date, guid, episode_number, season_number, transcript, status,
-			created_at, updated_at
-		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
-		) RETURNING id
-	`
-
-	if episode.ID == uuid.Nil {
-		episode.ID = uuid.New()
-	}
-
-	now := time.Now()
-	episode.CreatedAt = now
-	episode.UpdatedAt = now
-	
-	if episode.PublicationDate.IsZero() {
-		episode.PublicationDate = now
-	}
-
-	err := r.db.QueryRowContext(
-		ctx,
-		query,
-		episode.ID,
-		episode.PodcastID,
-		episode.Title,
-		episode.Description,
-		episode.AudioURL,
-		episode.Duration,
-		episode.CoverImageURL,
-		episode.PublicationDate,
-		episode.GUID,
-		episode.EpisodeNumber,
-		episode.SeasonNumber,
-		episode.Transcript,
-		episode.Status,
-		episode.CreatedAt,
-		episode.UpdatedAt,
-	).Scan(&episode.ID)
-
-	return err
-}
-
-// GetEpisodeByID gets an episode by ID
-func (r *repository) GetEpisodeByID(ctx context.Context, id uuid.UUID) (*models.Episode, error) {
-	var episode models.Episode
-	query := `
-		SELECT
-			id, podcast_id, title, description, audio_url, duration, cover_image_url,
-			publication_date, guid, episode_number, season_number, transcript, status,
-			created_at, updated_at
-		FROM episodes
-		WHERE id = $1
-	`
-
-	err := r.db.GetContext(ctx, &episode, query, id)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, errors.New("episode not found")
-		}
-		return nil, err
-	}
-
-	return &episode, nil
-}
-
-// GetEpisodesByPodcastID gets episodes by podcast ID
-func (r *repository) GetEpisodesByPodcastID(ctx context.Context, podcastID uuid.UUID, page, pageSize int) ([]*models.Episode, int, error) {
-	query := `
-		SELECT
-			id, podcast_id, title, description, audio_url, duration, cover_image_url,
-			publication_date, guid, episode_number, season_number, transcript, status,
-			created_at, updated_at
-		FROM episodes
-		WHERE podcast_id = $1 AND status = 'active'
-		ORDER BY 
-			CASE 
-				WHEN season_number IS NOT NULL AND episode_number IS NOT NULL 
-				THEN season_number * 1000 + episode_number
-				ELSE 999999
-			END ASC,
-			publication_date DESC
-		LIMIT $2 OFFSET $3
-	`
-
-	var episodes []*models.Episode
-	offset := (page - 1) * pageSize
-	err := r.db.SelectContext(ctx, &episodes, query, podcastID, pageSize, offset)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// Get total count
-	countQuery := `SELECT COUNT(*) FROM episodes WHERE podcast_id = $1 AND status = 'active'`
-	var count int
-	err = r.db.GetContext(ctx, &count, countQuery, podcastID)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return episodes, count, nil
-}
-
-// UpdateEpisode updates an episode
-func (r *repository) UpdateEpisode(ctx context.Context, episode *models.Episode) error {
-	query := `
-		UPDATE episodes SET
-			title = $1,
-			description = $2,
-			audio_url = $3,
-			duration = $4,
-			cover_image_url = $5,
-			publication_date = $6,
-			guid = $7,
-			episode_number = $8,
-			season_number = $9,
-			transcript = $10,
-			status = $11,
-			updated_at = $12
-		WHERE id = $13
-	`
-
-	episode.UpdatedAt = time.Now()
-
-	_, err := r.db.ExecContext(
-		ctx,
-		query,
-		episode.Title,
-		episode.Description,
-		episode.AudioURL,
-		episode.Duration,
-		episode.CoverImageURL,
-		episode.PublicationDate,
-		episode.GUID,
-		episode.EpisodeNumber,
-		episode.SeasonNumber,
-		episode.Transcript,
-		episode.Status,
-		episode.UpdatedAt,
-		episode.ID,
-	)
-
-	return err
-}
-
-// DeleteEpisode deletes an episode
-func (r *repository) DeleteEpisode(ctx context.Context, id uuid.UUID) error {
-	query := `DELETE FROM episodes WHERE id = $1`
-	_, err := r.db.ExecContext(ctx, query, id)
-	return err
-}
-
-// ListEpisodes lists episodes with optional filtering
-func (r *repository) ListEpisodes(ctx context.Context, params models.EpisodeSearchParams) ([]*models.Episode, int, error) {
-	// Base query
-	baseQuery := `
-		SELECT 
-			id, podcast_id, title, description, audio_url, duration, cover_image_url,
-			publication_date, guid, episode_number, season_number, transcript, status,
-			created_at, updated_at
-		FROM episodes
-		WHERE status = 'active'
-	`
-	
-	// Count query
-	countQuery := `
-		SELECT COUNT(*)
-		FROM episodes
-		WHERE status = 'active'
-	`
-	
-	// Add filters
-	var filters []string
-	var args []interface{}
-	argIndex := 1
-	
-	if params.Query != "" {
-		filters = append(filters, fmt.Sprintf("(title ILIKE $%d OR description ILIKE $%d)", argIndex, argIndex))
-		args = append(args, "%"+params.Query+"%")
-		argIndex++
-	}
-	
-	if params.PodcastID != "" {
-		podcastID, err := uuid.Parse(params.PodcastID)
-		if err == nil {
-			filters = append(filters, fmt.Sprintf("podcast_id = $%d", argIndex))
-			args = append(args, podcastID)
-			argIndex++
-		}
-	}
-	
-	if !params.FromDate.IsZero() {
-		filters = append(filters, fmt.Sprintf("publication_date >= $%d", argIndex))
-		args = append(args, params.FromDate)
-		argIndex++
-	}
-	
-	if !params.ToDate.IsZero() {
-		filters = append(filters, fmt.Sprintf("publication_date <= $%d", argIndex))
-		args = append(args, params.ToDate)
-		argIndex++
-	}
-	
-	// Apply filters to queries
-	if len(filters) > 0 {
-		filterStr := strings.Join(filters, " AND ")
-		baseQuery += " AND " + filterStr
-		countQuery += " AND " + filterStr
-	}
-	
-	// Add sorting
-	if params.SortBy != "" {
-		sortOrder := "ASC"
-		if params.SortOrder == "desc" {
-			sortOrder = "DESC"
-		}
-		
-		// Validate sort field
-		validSortFields := map[string]string{
-			"title":            "title",
-			"publication_date": "publication_date",
-			"created_at":       "created_at",
-			"updated_at":       "updated_at",
-		}
-		
-		if sortField, ok := validSortFields[params.SortBy]; ok {
-			baseQuery += fmt.Sprintf(" ORDER BY %s %s", sortField, sortOrder)
-		} else {
-			baseQuery += " ORDER BY publication_date DESC"
-		}
-	} else {
-		baseQuery += " ORDER BY publication_date DESC"
-	}
-	
-	// Add pagination
-	baseQuery += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
-	args = append(args, params.PageSize, (params.Page-1)*params.PageSize)
-	
-	// Get total count
-	var totalCount int
-	err := r.db.GetContext(ctx, &totalCount, countQuery, args[:argIndex-1]...)
-	if err != nil {
-		return nil, 0, err
-	}
-	
-	// Get episodes
-	var episodes []*models.Episode
-	err = r.db.SelectContext(ctx, &episodes, baseQuery, args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	
-	return episodes, totalCount, nil
-}
-
-// GetCategories gets all categories
-func (r *repository) GetCategories(ctx context.Context) ([]*models.Category, error) {
-	query := `
-		SELECT id, name, description, icon_url, created_at, updated_at
-		FROM categories
-		ORDER BY name
-	`
-	
-	var categories []*models.Category
-	err := r.db.SelectContext(ctx, &categories, query)
-	return categories, err
-}
-
-// AssociatePodcastWithCategories associates a podcast with categories
-func (r *repository) AssociatePodcastWithCategories(ctx context.Context, podcastID uuid.UUID, categoryIDs []uuid.UUID) error {
-	// First remove existing associations
-	deleteQuery := `DELETE FROM podcast_categories WHERE podcast_id = $1`
-	_, err := r.db.ExecContext(ctx, deleteQuery, podcastID)
-	if err != nil {
-		return err
-	}
-	
-	// Add new associations
-	for _, categoryID := range categoryIDs {
-		insertQuery := `INSERT INTO podcast_categories (podcast_id, category_id) VALUES ($1, $2)`
-		_, err := r.db.ExecContext(ctx, insertQuery, podcastID, categoryID)
-		if err != nil {
-			return err
-		}
-	}
-	
-	return nil
-}
-
-// SubscribeToPodcast subscribes a listener to a podcast
-func (r *repository) SubscribeToPodcast(ctx context.Context, listenerID, podcastID uuid.UUID) error {
-	query := `
-		INSERT INTO subscriptions (listener_id, podcast_id)
-		VALUES ($1, $2)
-		ON CONFLICT (listener_id, podcast_id) DO NOTHING
-	`
-	
-	_, err := r.db.ExecContext(ctx, query, listenerID, podcastID)
-	return err
-}
-
-// UnsubscribeFromPodcast unsubscribes a listener from a podcast
-func (r *repository) UnsubscribeFromPodcast(ctx context.Context, listenerID, podcastID uuid.UUID) error {
-	query := `DELETE FROM subscriptions WHERE listener_id = $1 AND podcast_id = $2`
-	_, err := r.db.ExecContext(ctx, query, listenerID, podcastID)
-	return err
-}
-
-// GetSubscribedPodcasts gets podcasts subscribed by a listener
-func (r *repository) GetSubscribedPodcasts(ctx context.Context, listenerID uuid.UUID, page, pageSize int) ([]*models.Podcast, int, error) {
-	query := `
-		SELECT p.id, p.podcaster_id, p.title, p.description, p.cover_image_url, p.rss_url, p.website_url,
-		       p.language, p.author, p.category, p.subcategory, p.explicit, p.status, p.created_at, p.updated_at,
-		       p.last_synced_at
-		FROM podcasts p
-		JOIN subscriptions s ON p.id = s.podcast_id
-		WHERE s.listener_id = $1
-		ORDER BY s.created_at DESC
-		LIMIT $2 OFFSET $3
-	`
-	
-	var podcasts []*models.Podcast
-	offset := (page - 1) * pageSize
-	err := r.db.SelectContext(ctx, &podcasts, query, listenerID, pageSize, offset)
-	if err != nil {
-		return nil, 0, err
-	}
-	
-	// Get total count
-	countQuery := `
-		SELECT COUNT(*)
-		FROM subscriptions
-		WHERE listener_id = $1
-	`
-	
-	var totalCount int
-	err = r.db.GetContext(ctx, &totalCount, countQuery, listenerID)
-	if err != nil {
-		return nil, 0, err
-	}
-	
-	// Get categories and episode counts for each podcast
-	for _, podcast := range podcasts {
-		categories, err := r.GetCategoriesByPodcastID(ctx, podcast.ID)
-		if err != nil {
-			return nil, 0, err
-		}
-		podcast.Categories = categories
-		
-		episodeCountQuery := `SELECT COUNT(*) FROM episodes WHERE podcast_id = $1 AND status = 'active'`
-		var episodeCount int
-		err = r.db.GetContext(ctx, &episodeCount, episodeCountQuery, podcast.ID)
-		if err != nil {
-			return nil, 0, err
-		}
-		podcast.EpisodeCount = episodeCount
-	}
-	
-	return podcasts, totalCount, nil
-}
-
-// IsSubscribed checks if a listener is subscribed to a podcast
-func (r *repository) IsSubscribed(ctx context.Context, listenerID, podcastID uuid.UUID) (bool, error) {
-	query := `
-		SELECT EXISTS(
-			SELECT 1 FROM subscriptions 
-			WHERE listener_id = $1 AND podcast_id = $2
-		)
-	`
-	
-	var isSubscribed bool
-	err := r.db.GetContext(ctx, &isSubscribed, query, listenerID, podcastID)
-	return isSubscribed, err
-}
-
-// SavePlaybackPosition saves the playback position for an episode
-func (r *repository) SavePlaybackPosition(ctx context.Context, listenerID, episodeID uuid.UUID, position int, completed bool) error {
-	query := `
-		INSERT INTO playback_history (
-			listener_id, episode_id, position, completed, updated_at
-		) VALUES (
-			$1, $2, $3, $4, $5
-		) ON CONFLICT (listener_id, episode_id) DO UPDATE 
-		SET position = $3, completed = $4, updated_at = $5
-	`
-	
-	now := time.Now()
-	_, err := r.db.ExecContext(ctx, query, listenerID, episodeID, position, completed, now)
-	return err
-}
-
-// GetPlaybackPosition gets the playback position for an episode
-func (r *repository) GetPlaybackPosition(ctx context.Context, listenerID, episodeID uuid.UUID) (int, bool, error) {
-	query := `
-		SELECT position, completed
-		FROM playback_history
-		WHERE listener_id = $1 AND episode_id = $2
-	`
-	
-	var position int
-	var completed bool
-	err := r.db.QueryRowContext(ctx, query, listenerID, episodeID).Scan(&position, &completed)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return 0, false, nil // Not found, return defaults
-		}
-		return 0, false, err
-	}
-	
-	return position, completed, nil
-}
-
 // GetListeningHistory gets the listening history for a user
 func (r *repository) GetListeningHistory(ctx context.Context, listenerID uuid.UUID, page, pageSize int) ([]*models.PlaybackHistory, int, error) {
 	query := `
@@ -810,4 +169,444 @@ func (r *repository) GetListeningHistory(ctx context.Context, listenerID uuid.UU
 			ph.created_at, ph.updated_at,
 			e.title as episode_title, e.podcast_id,
 			p.title as podcast_title,
-			COALESCE(e.cover_image_
+			COALESCE(e.cover_image_url, p.cover_image_url) as cover_image_url
+		FROM playback_history ph
+		JOIN episodes e ON ph.episode_id = e.id
+		JOIN podcasts p ON e.podcast_id = p.id
+		WHERE ph.listener_id = $1
+		ORDER BY ph.updated_at DESC
+		LIMIT $2 OFFSET $3
+	`
+
+	var history []*models.PlaybackHistory
+	offset := (page - 1) * pageSize
+	err := r.db.SelectContext(ctx, &history, query, listenerID, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get total count
+	countQuery := `SELECT COUNT(*) FROM playback_history WHERE listener_id = $1`
+	var totalCount int
+	err = r.db.GetContext(ctx, &totalCount, countQuery, listenerID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return history, totalCount, nil
+}
+
+// LikeEpisode adds a like to an episode
+func (r *repository) LikeEpisode(ctx context.Context, listenerID, episodeID uuid.UUID) error {
+	query := `
+		INSERT INTO likes (listener_id, episode_id)
+		VALUES ($1, $2)
+		ON CONFLICT (listener_id, episode_id) DO NOTHING
+	`
+
+	_, err := r.db.ExecContext(ctx, query, listenerID, episodeID)
+	return err
+}
+
+// UnlikeEpisode removes a like from an episode
+func (r *repository) UnlikeEpisode(ctx context.Context, listenerID, episodeID uuid.UUID) error {
+	query := `DELETE FROM likes WHERE listener_id = $1 AND episode_id = $2`
+	_, err := r.db.ExecContext(ctx, query, listenerID, episodeID)
+	return err
+}
+
+// IsEpisodeLiked checks if a listener has liked an episode
+func (r *repository) IsEpisodeLiked(ctx context.Context, listenerID, episodeID uuid.UUID) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM likes
+			WHERE listener_id = $1 AND episode_id = $2
+		)
+	`
+
+	var liked bool
+	err := r.db.GetContext(ctx, &liked, query, listenerID, episodeID)
+	return liked, err
+}
+
+// GetLikedEpisodes gets a list of episodes liked by a listener
+func (r *repository) GetLikedEpisodes(ctx context.Context, listenerID uuid.UUID, page, pageSize int) ([]*models.Episode, int, error) {
+	query := `
+		SELECT e.id, e.podcast_id, e.title, e.description, e.audio_url, e.duration, 
+			e.cover_image_url, e.publication_date, e.guid, e.episode_number, e.season_number, 
+			e.transcript, e.status, e.created_at, e.updated_at
+		FROM episodes e
+		JOIN likes l ON e.id = l.episode_id
+		WHERE l.listener_id = $1 AND e.status = 'active'
+		ORDER BY l.created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+
+	var episodes []*models.Episode
+	offset := (page - 1) * pageSize
+	err := r.db.SelectContext(ctx, &episodes, query, listenerID, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get total count
+	countQuery := `
+		SELECT COUNT(*)
+		FROM likes l
+		JOIN episodes e ON l.episode_id = e.id
+		WHERE l.listener_id = $1 AND e.status = 'active'
+	`
+
+	var totalCount int
+	err = r.db.GetContext(ctx, &totalCount, countQuery, listenerID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return episodes, totalCount, nil
+}
+
+// AddComment adds a comment to an episode
+func (r *repository) AddComment(ctx context.Context, comment *models.Comment) error {
+	query := `
+		INSERT INTO comments (
+			id, user_id, episode_id, content, status, created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7
+		) RETURNING id
+	`
+
+	if comment.ID == uuid.Nil {
+		comment.ID = uuid.New()
+	}
+
+	now := time.Now()
+	comment.CreatedAt = now
+	comment.UpdatedAt = now
+
+	if comment.Status == "" {
+		comment.Status = "active"
+	}
+
+	err := r.db.QueryRowContext(
+		ctx,
+		query,
+		comment.ID,
+		comment.UserID,
+		comment.EpisodeID,
+		comment.Content,
+		comment.Status,
+		comment.CreatedAt,
+		comment.UpdatedAt,
+	).Scan(&comment.ID)
+
+	return err
+}
+
+// GetCommentsByEpisodeID gets comments for an episode
+func (r *repository) GetCommentsByEpisodeID(ctx context.Context, episodeID uuid.UUID, page, pageSize int) ([]*models.Comment, int, error) {
+	query := `
+		SELECT 
+			c.id, c.user_id, c.episode_id, c.content, c.status, c.created_at, c.updated_at,
+			u.username, u.full_name, u.profile_image_url as user_profile_url
+		FROM comments c
+		JOIN users u ON c.user_id = u.id
+		WHERE c.episode_id = $1 AND c.status = 'active'
+		ORDER BY c.created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+
+	var comments []*models.Comment
+	offset := (page - 1) * pageSize
+	err := r.db.SelectContext(ctx, &comments, query, episodeID, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get total count
+	countQuery := `
+		SELECT COUNT(*)
+		FROM comments
+		WHERE episode_id = $1 AND status = 'active'
+	`
+
+	var totalCount int
+	err = r.db.GetContext(ctx, &totalCount, countQuery, episodeID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return comments, totalCount, nil
+}
+
+// DeleteComment deletes a comment
+func (r *repository) DeleteComment(ctx context.Context, commentID, userID uuid.UUID) error {
+	// First check if user owns the comment
+	checkQuery := `SELECT user_id FROM comments WHERE id = $1`
+	var commentUserID uuid.UUID
+	err := r.db.GetContext(ctx, &commentUserID, checkQuery, commentID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return errors.New("comment not found")
+		}
+		return err
+	}
+
+	// Only allow deletion if the user is the comment author
+	if commentUserID != userID {
+		return errors.New("not authorized to delete this comment")
+	}
+
+	// Delete the comment
+	deleteQuery := `DELETE FROM comments WHERE id = $1`
+	_, err = r.db.ExecContext(ctx, deleteQuery, commentID)
+	return err
+}
+
+// CreatePlaylist creates a new playlist
+func (r *repository) CreatePlaylist(ctx context.Context, playlist *models.Playlist) error {
+	query := `
+		INSERT INTO playlists (
+			id, user_id, name, description, is_public, created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7
+		) RETURNING id
+	`
+
+	if playlist.ID == uuid.Nil {
+		playlist.ID = uuid.New()
+	}
+
+	now := time.Now()
+	playlist.CreatedAt = now
+	playlist.UpdatedAt = now
+
+	err := r.db.QueryRowContext(
+		ctx,
+		query,
+		playlist.ID,
+		playlist.UserID,
+		playlist.Name,
+		playlist.Description,
+		playlist.IsPublic,
+		playlist.CreatedAt,
+		playlist.UpdatedAt,
+	).Scan(&playlist.ID)
+
+	return err
+}
+
+// GetPlaylistByID gets a playlist by ID
+func (r *repository) GetPlaylistByID(ctx context.Context, id, userID uuid.UUID) (*models.Playlist, error) {
+	var playlist models.Playlist
+	query := `
+		SELECT id, user_id, name, description, is_public, created_at, updated_at
+		FROM playlists
+		WHERE id = $1 AND (user_id = $2 OR is_public = true)
+	`
+
+	err := r.db.GetContext(ctx, &playlist, query, id, userID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.New("playlist not found or not accessible")
+		}
+		return nil, err
+	}
+
+	// Get episode count
+	countQuery := `SELECT COUNT(*) FROM playlist_items WHERE playlist_id = $1`
+	var episodeCount int
+	err = r.db.GetContext(ctx, &episodeCount, countQuery, id)
+	if err != nil {
+		return nil, err
+	}
+
+	playlist.EpisodeCount = episodeCount
+
+	return &playlist, nil
+}
+
+// GetUserPlaylists gets playlists for a user
+func (r *repository) GetUserPlaylists(ctx context.Context, userID uuid.UUID, page, pageSize int) ([]*models.Playlist, int, error) {
+	query := `
+		SELECT id, user_id, name, description, is_public, created_at, updated_at
+		FROM playlists
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+
+	var playlists []*models.Playlist
+	offset := (page - 1) * pageSize
+	err := r.db.SelectContext(ctx, &playlists, query, userID, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get total count
+	countQuery := `SELECT COUNT(*) FROM playlists WHERE user_id = $1`
+	var totalCount int
+	err = r.db.GetContext(ctx, &totalCount, countQuery, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get episode counts for each playlist
+	for _, playlist := range playlists {
+		episodeCountQuery := `SELECT COUNT(*) FROM playlist_items WHERE playlist_id = $1`
+		var episodeCount int
+		err = r.db.GetContext(ctx, &episodeCount, episodeCountQuery, playlist.ID)
+		if err != nil {
+			return nil, 0, err
+		}
+		playlist.EpisodeCount = episodeCount
+	}
+
+	return playlists, totalCount, nil
+}
+
+// UpdatePlaylist updates a playlist
+func (r *repository) UpdatePlaylist(ctx context.Context, playlist *models.Playlist) error {
+	// First check if user owns the playlist
+	checkQuery := `SELECT user_id FROM playlists WHERE id = $1`
+	var playlistUserID uuid.UUID
+	err := r.db.GetContext(ctx, &playlistUserID, checkQuery, playlist.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return errors.New("playlist not found")
+		}
+		return err
+	}
+
+	// Only allow updates if the user is the playlist owner
+	if playlistUserID != playlist.UserID {
+		return errors.New("not authorized to update this playlist")
+	}
+
+	// Update the playlist
+	query := `
+		UPDATE playlists SET
+			name = $1,
+			description = $2,
+			is_public = $3,
+			updated_at = $4
+		WHERE id = $5
+	`
+
+	playlist.UpdatedAt = time.Now()
+
+	_, err = r.db.ExecContext(
+		ctx,
+		query,
+		playlist.Name,
+		playlist.Description,
+		playlist.IsPublic,
+		playlist.UpdatedAt,
+		playlist.ID,
+	)
+
+	return err
+}
+
+// DeletePlaylist deletes a playlist
+func (r *repository) DeletePlaylist(ctx context.Context, id, userID uuid.UUID) error {
+	// First check if user owns the playlist
+	checkQuery := `SELECT user_id FROM playlists WHERE id = $1`
+	var playlistUserID uuid.UUID
+	err := r.db.GetContext(ctx, &playlistUserID, checkQuery, id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return errors.New("playlist not found")
+		}
+		return err
+	}
+
+	// Only allow deletion if the user is the playlist owner
+	if playlistUserID != userID {
+		return errors.New("not authorized to delete this playlist")
+	}
+
+	// Delete the playlist
+	deleteQuery := `DELETE FROM playlists WHERE id = $1`
+	_, err = r.db.ExecContext(ctx, deleteQuery, id)
+	return err
+}
+
+// AddToPlaylist adds an episode to a playlist
+func (r *repository) AddToPlaylist(ctx context.Context, playlistID, episodeID uuid.UUID, position int) error {
+	// Check if the episode exists
+	episodeQuery := `SELECT id FROM episodes WHERE id = $1 AND status = 'active'`
+	var episode uuid.UUID
+	err := r.db.GetContext(ctx, &episode, episodeQuery, episodeID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return errors.New("episode not found")
+		}
+		return err
+	}
+
+	// If position is not specified, get the next position
+	if position <= 0 {
+		positionQuery := `
+			SELECT COALESCE(MAX(position), 0) + 1
+			FROM playlist_items
+			WHERE playlist_id = $1
+		`
+		err = r.db.GetContext(ctx, &position, positionQuery, playlistID)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Add the episode to the playlist
+	query := `
+		INSERT INTO playlist_items (playlist_id, episode_id, position, added_at)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (playlist_id, episode_id) DO UPDATE
+		SET position = $3, added_at = $4
+	`
+
+	_, err = r.db.ExecContext(ctx, query, playlistID, episodeID, position, time.Now())
+	return err
+}
+
+// RemoveFromPlaylist removes an episode from a playlist
+func (r *repository) RemoveFromPlaylist(ctx context.Context, playlistID, episodeID uuid.UUID) error {
+	query := `DELETE FROM playlist_items WHERE playlist_id = $1 AND episode_id = $2`
+	_, err := r.db.ExecContext(ctx, query, playlistID, episodeID)
+	return err
+}
+
+// GetPlaylistItems gets episodes in a playlist
+func (r *repository) GetPlaylistItems(ctx context.Context, playlistID uuid.UUID, page, pageSize int) ([]*models.PlaylistItem, int, error) {
+	query := `
+		SELECT 
+			pi.playlist_id, pi.episode_id, pi.position, pi.added_at,
+			e.title AS episode_title, e.podcast_id, e.duration,
+			p.title AS podcast_title,
+			COALESCE(e.cover_image_url, p.cover_image_url) AS cover_image_url
+		FROM playlist_items pi
+		JOIN episodes e ON pi.episode_id = e.id
+		JOIN podcasts p ON e.podcast_id = p.id
+		WHERE pi.playlist_id = $1
+		ORDER BY pi.position
+		LIMIT $2 OFFSET $3
+	`
+
+	var items []*models.PlaylistItem
+	offset := (page - 1) * pageSize
+	err := r.db.SelectContext(ctx, &items, query, playlistID, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get total count
+	countQuery := `SELECT COUNT(*) FROM playlist_items WHERE playlist_id = $1`
+	var totalCount int
+	err = r.db.GetContext(ctx, &totalCount, countQuery, playlistID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return items, totalCount, nil
+}
