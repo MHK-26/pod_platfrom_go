@@ -1,4 +1,4 @@
-module github.com/your-username/podcast-platform
+module github.com/MHK-26/podcast-platform
 
 go 1.20
 
