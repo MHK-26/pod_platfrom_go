@@ -25,6 +25,9 @@ type Service interface {
 	
 	// GetSyncStatus gets the latest sync status for a podcast
 	GetSyncStatus(ctx context.Context, podcastID uuid.UUID) (*models.RSSFeedSyncLog, error)
+	
+	// ParseFeed parses an RSS feed from a URL
+	ParseFeed(ctx context.Context, url string) (*models.RSSFeed, error)
 }
 
 type service struct {
@@ -42,6 +45,11 @@ func NewService(repo postgres.Repository, parser rss.Parser, db *sqlx.DB) Servic
 		db:        db,
 		syncMutex: &sync.Map{},
 	}
+}
+
+// ParseFeed parses an RSS feed from a URL
+func (s *service) ParseFeed(ctx context.Context, url string) (*models.RSSFeed, error) {
+	return s.parser.ParseFeed(ctx, url)
 }
 
 // SyncPodcast synchronizes a podcast feed by ID
@@ -272,96 +280,3 @@ func (s *service) SyncPodcast(ctx context.Context, podcastID uuid.UUID) (*models
 	result.EpisodesUpdated = episodesUpdated
 
 	return result, nil
-}
-
-// SyncAllPodcasts synchronizes all active podcasts
-func (s *service) SyncAllPodcasts(ctx context.Context) ([]models.RSSFeedSyncResult, error) {
-	// Get all active podcasts
-	podcasts, err := s.repo.GetActivePodcasts(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get active podcasts: %w", err)
-	}
-
-	results := make([]models.RSSFeedSyncResult, 0, len(podcasts))
-	var wg sync.WaitGroup
-	resultCh := make(chan models.RSSFeedSyncResult, len(podcasts))
-
-	// Set a limit on concurrent syncs
-	semaphore := make(chan struct{}, 5) // Maximum 5 concurrent syncs
-
-	// Sync each podcast in a separate goroutine
-	for _, podcast := range podcasts {
-		wg.Add(1)
-		go func(p *models.Podcast) {
-			defer wg.Done()
-			
-			// Acquire semaphore
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-			
-			// Create a context with timeout for each sync
-			syncCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-			defer cancel()
-
-			// Sync the podcast
-			result, err := s.SyncPodcast(syncCtx, p.ID)
-			if err != nil {
-				log.Printf("Failed to sync podcast %s (%s): %v", p.ID, p.Title, err)
-				if result == nil {
-					result = &models.RSSFeedSyncResult{
-						PodcastID:    p.ID,
-						Success:      false,
-						ErrorMessage: err.Error(),
-					}
-				}
-			}
-			
-			resultCh <- *result
-		}(podcast)
-	}
-
-	// Wait for all syncs to complete
-	go func() {
-		wg.Wait()
-		close(resultCh)
-	}()
-
-	// Collect results
-	for result := range resultCh {
-		results = append(results, result)
-	}
-
-	return results, nil
-}
-
-// GetSyncStatus gets the latest sync status for a podcast
-func (s *service) GetSyncStatus(ctx context.Context, podcastID uuid.UUID) (*models.RSSFeedSyncLog, error) {
-	return s.repo.GetLatestSyncLog(ctx, podcastID)
-}
-
-// Log sync success
-func (s *service) logSyncSuccess(ctx context.Context, podcastID uuid.UUID, episodesAdded, episodesUpdated int) error {
-	log := &models.RSSFeedSyncLog{
-		ID:              uuid.New(),
-		PodcastID:       podcastID,
-		Status:          "success",
-		EpisodesAdded:   episodesAdded,
-		EpisodesUpdated: episodesUpdated,
-		CreatedAt:       time.Now(),
-	}
-	return s.repo.CreateSyncLog(ctx, log)
-}
-
-// Log sync failure
-func (s *service) logSyncFailure(ctx context.Context, podcastID uuid.UUID, episodesAdded, episodesUpdated int, errorMessage string) error {
-	log := &models.RSSFeedSyncLog{
-		ID:              uuid.New(),
-		PodcastID:       podcastID,
-		Status:          "failure",
-		EpisodesAdded:   episodesAdded,
-		EpisodesUpdated: episodesUpdated,
-		ErrorMessage:    errorMessage,
-		CreatedAt:       time.Now(),
-	}
-	return s.repo.CreateSyncLog(ctx, log)
-}

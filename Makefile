@@ -5,12 +5,12 @@
 SERVICES := auth-service content-service analytics-service recommendation-service
 
 # Database configuration
-DB_USER := postgres
-DB_PASSWORD := postgres
+DB_USER := mhk26
+DB_PASSWORD := 
 DB_NAME := podcast_platform
 DB_HOST := localhost
 DB_PORT := 5432
-DB_URL := postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable
+DB_URL := postgres://$(DB_USER)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable
 
 # Run all services
 run:

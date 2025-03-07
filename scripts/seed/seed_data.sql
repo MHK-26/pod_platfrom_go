@@ -24,9 +24,9 @@ INSERT INTO users (id, email, username, password_hash, full_name, user_type, aut
     ('e8c72153-1f3c-4b0a-8a3d-89e0c7f5cc0a', 'listener2@example.com', 'listener2', '$2a$10$XlUl5K6UzVEkF6tRywOQK.PaYwYGCt4jvZelgYiskKjS.Nq7S7xrG', 'Listener Two', 'listener', 'email', true, 'ar-sd');
 
 -- Insert sample podcasts
-INSERT INTO podcasts (id, podcaster_id, title, description, cover_image_url, language, author, category, status) VALUES
-    ('83aec0d2-6c9b-4872-9e80-a6a5f3202b91', '7c83061e-8d76-46c9-a353-53d6be1220ea', 'Sudanese Culture Today', 'A podcast exploring the rich cultural heritage of Sudan', '/images/podcast1.jpg', 'ar-sd', 'Podcaster One', 'Culture', 'active'),
-    ('bac18a18-7c9a-4a17-9897-64c6518f808f', 'bb7b5a1a-1a84-4102-b53e-22e5f0e7b43f', 'Political Discourse', 'Discussions about Sudanese politics and governance', '/images/podcast2.jpg', 'ar-sd', 'Podcaster Two', 'Politics', 'active');
+INSERT INTO podcasts (id, podcaster_id, title, description, cover_image_url, rss_url, language, author, category, status) VALUES
+    ('83aec0d2-6c9b-4872-9e80-a6a5f3202b91', '7c83061e-8d76-46c9-a353-53d6be1220ea', 'Sudanese Culture Today', 'A podcast exploring the rich cultural heritage of Sudan', '/images/podcast1.jpg', 'https://example.com/rss1', 'ar-sd', 'Podcaster One', 'Culture', 'active'),
+    ('bac18a18-7c9a-4a17-9897-64c6518f808f', 'bb7b5a1a-1a84-4102-b53e-22e5f0e7b43f', 'Political Discourse', 'Discussions about Sudanese politics and governance', '/images/podcast2.jpg', 'https://example.com/rss2', 'ar-sd', 'Podcaster Two', 'Politics', 'active');
 
 -- Associate podcasts with categories
 INSERT INTO podcast_categories (podcast_id, category_id) VALUES
@@ -34,10 +34,10 @@ INSERT INTO podcast_categories (podcast_id, category_id) VALUES
     ('bac18a18-7c9a-4a17-9897-64c6518f808f', '1f8a5d74-6d12-4c32-a963-48190907c0ec');
 
 -- Insert sample episodes
-INSERT INTO episodes (id, podcast_id, title, description, audio_url, duration, publication_date, status) VALUES
-    ('f4b8a17e-8c5f-4d78-9a19-39e33c83d46a', '83aec0d2-6c9b-4872-9e80-a6a5f3202b91', 'Traditional Music of Sudan', 'Exploring the diverse musical traditions across Sudan', '/audio/episode1.mp3', 1800, NOW() - INTERVAL '7 days', 'active'),
-    ('2c7d5d65-6a5c-44a0-9c36-1e4297198a7d', '83aec0d2-6c9b-4872-9e80-a6a5f3202b91', 'Sudanese Cuisine', 'Delving into the delicious world of Sudanese food', '/audio/episode2.mp3', 2100, NOW() - INTERVAL '3 days', 'active'),
-    ('7de1b5c9-8b9a-4d2a-9e15-4e8a9a7b6a65', 'bac18a18-7c9a-4a17-9897-64c6518f808f', 'Current Political Climate', 'Analyzing the current political situation in Sudan', '/audio/episode3.mp3', 2400, NOW() - INTERVAL '5 days', 'active');
+INSERT INTO episodes (id, podcast_id, title, description, audio_url, duration, publication_date, guid, status) VALUES
+    ('f4b8a17e-8c5f-4d78-9a19-39e33c83d46a', '83aec0d2-6c9b-4872-9e80-a6a5f3202b91', 'Traditional Music of Sudan', 'Exploring the diverse musical traditions across Sudan', '/audio/episode1.mp3', 1800, NOW() - INTERVAL '7 days', 'guid-episode1', 'active'),
+    ('2c7d5d65-6a5c-44a0-9c36-1e4297198a7d', '83aec0d2-6c9b-4872-9e80-a6a5f3202b91', 'Sudanese Cuisine', 'Delving into the delicious world of Sudanese food', '/audio/episode2.mp3', 2100, NOW() - INTERVAL '3 days', 'guid-episode2', 'active'),
+    ('7de1b5c9-8b9a-4d2a-9e15-4e8a9a7b6a65', 'bac18a18-7c9a-4a17-9897-64c6518f808f', 'Current Political Climate', 'Analyzing the current political situation in Sudan', '/audio/episode3.mp3', 2400, NOW() - INTERVAL '5 days', 'guid-episode3', 'active');
 
 -- Add subscriptions
 INSERT INTO subscriptions (listener_id, podcast_id) VALUES
@@ -61,11 +61,6 @@ INSERT INTO likes (listener_id, episode_id) VALUES
 INSERT INTO comments (id, user_id, episode_id, content) VALUES
     ('a1b2c3d4-e5f6-g7h8-i9j0-k1l2m3n4o5p6', 'a31d67c6-e85a-4c73-b0ab-a4a290102393', 'f4b8a17e-8c5f-4d78-9a19-39e33c83d46a', 'Fantastic episode! I learned so much about Sudanese music.'),
     ('b2c3d4e5-f6g7-h8i9-j0k1-l2m3n4o5p6q7', 'e8c72153-1f3c-4b0a-8a3d-89e0c7f5cc0a', '7de1b5c9-8b9a-4d2a-9e15-4e8a9a7b6a65', 'Great analysis of the current situation. Looking forward to more!');
-
--- Add subscription plans
-INSERT INTO subscription_plans (id, name, description, price_monthly, price_yearly, features, is_active) VALUES
-    ('1a2b3c4d-5e6f-7g8h-9i0j-k1l2m3n4o5p6', 'Basic', 'Basic subscription with ad-free listening', 5.99, 59.99, '{"ad_free": true, "offline_listening": true, "early_access": false}', true),
-    ('2b3c4d5e-6f7g-8h9i-0j1k-2l3m4n5o6p7q', 'Premium', 'Premium subscription with all features', 9.99, 99.99, '{"ad_free": true, "offline_listening": true, "early_access": true, "exclusive_content": true}', true);
 
 -- NOTE: The password hash used above ('$2a$10$XlUl5K6UzVEkF6tRywOQK.PaYwYGCt4jvZelgYiskKjS.Nq7S7xrG') 
 -- corresponds to the password 'password123' - this is for testing purposes only

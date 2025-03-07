@@ -10,6 +10,8 @@ import (
 	"github.com/your-username/podcast-platform/pkg/common/config"
 	"github.com/your-username/podcast-platform/pkg/content/models"
 	"github.com/your-username/podcast-platform/pkg/content/repository/postgres"
+	"github.com/your-username/podcast-platform/pkg/content/rss"
+	"github.com/your-username/podcast-platform/pkg/content/sync"
 )
 
 // Usecase defines the methods for the content usecase
@@ -57,49 +59,56 @@ type Usecase interface {
 
 type usecase struct {
 	repo           postgres.Repository
+	rssParser      rss.Parser
+	syncService    sync.Service
 	cfg            *config.Config
 	contextTimeout time.Duration
 }
 
 // NewUsecase creates a new content usecase
-func NewUsecase(repo postgres.Repository, cfg *config.Config, timeout time.Duration) Usecase {
+func NewUsecase(repo postgres.Repository, syncService sync.Service, cfg *config.Config, timeout time.Duration) Usecase {
 	return &usecase{
 		repo:           repo,
+		syncService:    syncService,
 		cfg:            cfg,
 		contextTimeout: timeout,
 	}
 }
 
 // CreatePodcast creates a new podcast
-func (u *usecase) CreatePodcast(ctx context.Context, podcasterID uuid.UUID, req *models.CreatePodcastRequest) (*models.Podcast, error) {
+func (u *usecase) CreatePodcast(ctx context.Context, podcasterID uuid.UUID, req *models.CreatePodcastRequest, feed *models.RSSFeed) (*models.Podcast, error) {
 	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
 	defer cancel()
 	
-	// Create podcast model
+	// Create podcast model using the feed data
 	podcast := &models.Podcast{
 		PodcasterID:    podcasterID,
-		Title:          req.Title,
-		Description:    req.Description,
-		CoverImageURL:  req.CoverImageURL,
 		RSSUrl:         req.RSSUrl,
-		WebsiteURL:     req.WebsiteURL,
-		Language:       req.Language,
-		Author:         req.Title, // Default to title, can be updated during RSS sync
-		Category:       req.Category,
-		Subcategory:    req.Subcategory,
-		Explicit:       req.Explicit,
-		Status:         "pending", // Default to pending, can be changed by admin
+		Status:         "active",
+	}
+	
+	// If feed is provided, use its data
+	if feed != nil {
+		podcast.Title = feed.Title
+		podcast.Description = feed.Description 
+		podcast.CoverImageURL = feed.CoverImageURL
+		podcast.WebsiteURL = feed.WebsiteURL
+		podcast.Language = feed.Language
+		podcast.Author = feed.Author
+		podcast.Category = feed.Category
+		podcast.Subcategory = feed.Subcategory
+		podcast.Explicit = feed.Explicit
+	} else {
+		// Otherwise use data from request
+		podcast.Description = req.Description
+		podcast.Category = req.Category
+		podcast.Subcategory = req.Subcategory
 	}
 	
 	// Create podcast in database
 	err := u.repo.CreatePodcast(ctx, podcast)
 	if err != nil {
 		return nil, err
-	}
-	
-	// If RSS URL is provided, sync podcast with RSS feed
-	if req.RSSUrl != "" {
-		go u.SyncPodcastFromRSS(context.Background(), podcast.ID)
 	}
 	
 	return podcast, nil
@@ -182,20 +191,11 @@ func (u *usecase) UpdatePodcast(ctx context.Context, id, podcasterID uuid.UUID, 
 	}
 	
 	// Update fields
-	if req.Title != "" {
-		podcast.Title = req.Title
-	}
 	if req.Description != "" {
 		podcast.Description = req.Description
 	}
-	if req.CoverImageURL != "" {
-		podcast.CoverImageURL = req.CoverImageURL
-	}
-	if req.WebsiteURL != "" {
-		podcast.WebsiteURL = req.WebsiteURL
-	}
-	if req.Language != "" {
-		podcast.Language = req.Language
+	if req.RSSUrl != "" {
+		podcast.RSSUrl = req.RSSUrl
 	}
 	if req.Category != "" {
 		podcast.Category = req.Category
@@ -203,7 +203,6 @@ func (u *usecase) UpdatePodcast(ctx context.Context, id, podcasterID uuid.UUID, 
 	if req.Subcategory != "" {
 		podcast.Subcategory = req.Subcategory
 	}
-	podcast.Explicit = req.Explicit
 	podcast.UpdatedAt = time.Now()
 	
 	// Update podcast in database
@@ -258,44 +257,53 @@ func (u *usecase) ListPodcasts(ctx context.Context, params models.PodcastSearchP
 	return podcastResponses, totalCount, nil
 }
 
-// CreateEpisode creates a new episode
-func (u *usecase) CreateEpisode(ctx context.Context, req *models.CreateEpisodeRequest) (*models.Episode, error) {
+// IsUserAuthorizedForPodcast checks if a user is authorized for a podcast
+func (u *usecase) IsUserAuthorizedForPodcast(ctx context.Context, podcastID, userID uuid.UUID) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
 	defer cancel()
 	
-	// Verify podcast exists and get podcaster ID
-	podcast, err := u.repo.GetPodcastByID(ctx, req.PodcastID)
-	if err != nil {
-		return nil, errors.New("podcast not found")
+	return u.repo.IsUserAuthorizedForPodcast(ctx, podcastID, userID)
+}
+
+// ParseRSSFeed parses an RSS feed from a URL
+func (u *usecase) ParseRSSFeed(ctx context.Context, url string) (*models.RSSFeed, error) {
+	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
+	defer cancel()
+	
+	// Check if a podcast with this RSS URL already exists
+	existingPodcast, err := u.repo.GetPodcastByRSSURL(ctx, url)
+	if err == nil && existingPodcast != nil {
+		return nil, errors.New("a podcast with this RSS feed already exists")
 	}
 	
-	// Create episode model
-	episode := &models.Episode{
-		PodcastID:       req.PodcastID,
-		Title:           req.Title,
-		Description:     req.Description,
-		AudioURL:        req.AudioURL,
-		Duration:        req.Duration,
-		CoverImageURL:   req.CoverImageURL,
-		PublicationDate: req.PublicationDate,
-		EpisodeNumber:   req.EpisodeNumber,
-		SeasonNumber:    req.SeasonNumber,
-		Transcript:      req.Transcript,
-		Status:          "active",
-	}
+	// Parse the feed using the RSS parser from the sync service
+	return u.syncService.(sync.Service).ParseFeed(ctx, url)
+}
+
+// SyncPodcastFromRSS syncs a podcast from its RSS feed
+func (u *usecase) SyncPodcastFromRSS(ctx context.Context, podcastID uuid.UUID) (*models.RSSFeedSyncResult, error) {
+	return u.syncService.SyncPodcast(ctx, podcastID)
+}
+
+// SyncAllPodcasts syncs all podcasts from their RSS feeds
+func (u *usecase) SyncAllPodcasts(ctx context.Context) ([]models.RSSFeedSyncResult, error) {
+	return u.syncService.SyncAllPodcasts(ctx)
+}
+
+// GetLatestSyncLog gets the latest sync log for a podcast
+func (u *usecase) GetLatestSyncLog(ctx context.Context, podcastID uuid.UUID) (*models.RSSFeedSyncLog, error) {
+	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
+	defer cancel()
 	
-	// Use podcast cover image if episode cover image is not provided
-	if episode.CoverImageURL == "" {
-		episode.CoverImageURL = podcast.CoverImageURL
-	}
+	return u.repo.GetLatestSyncLog(ctx, podcastID)
+}
+
+// GetSyncLogs gets the sync logs for a podcast
+func (u *usecase) GetSyncLogs(ctx context.Context, podcastID uuid.UUID, page, pageSize int) ([]*models.RSSFeedSyncLog, int, error) {
+	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
+	defer cancel()
 	
-	// Create episode in database
-	err = u.repo.CreateEpisode(ctx, episode)
-	if err != nil {
-		return nil, err
-	}
-	
-	return episode, nil
+	return u.repo.GetSyncLogs(ctx, podcastID, page, pageSize)
 }
 
 // GetEpisodeByID gets an episode by ID
@@ -354,76 +362,6 @@ func (u *usecase) GetEpisodesByPodcastID(ctx context.Context, podcastID uuid.UUI
 	}
 	
 	return episodeResponses, totalCount, nil
-}
-
-// UpdateEpisode updates an episode
-func (u *usecase) UpdateEpisode(ctx context.Context, id uuid.UUID, req *models.UpdateEpisodeRequest) (*models.Episode, error) {
-	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
-	defer cancel()
-	
-	// Get episode
-	episode, err := u.repo.GetEpisodeByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	
-	// Update fields
-	if req.Title != "" {
-		episode.Title = req.Title
-	}
-	if req.Description != "" {
-		episode.Description = req.Description
-	}
-	if req.CoverImageURL != "" {
-		episode.CoverImageURL = req.CoverImageURL
-	}
-	if !req.PublicationDate.IsZero() {
-		episode.PublicationDate = req.PublicationDate
-	}
-	if req.EpisodeNumber != nil {
-		episode.EpisodeNumber = req.EpisodeNumber
-	}
-	if req.SeasonNumber != nil {
-		episode.SeasonNumber = req.SeasonNumber
-	}
-	if req.Transcript != "" {
-		episode.Transcript = req.Transcript
-	}
-	episode.UpdatedAt = time.Now()
-	
-	// Update episode in database
-	err = u.repo.UpdateEpisode(ctx, episode)
-	if err != nil {
-		return nil, err
-	}
-	
-	return episode, nil
-}
-
-// DeleteEpisode deletes an episode
-func (u *usecase) DeleteEpisode(ctx context.Context, id, userID uuid.UUID) error {
-	ctx, cancel := context.WithTimeout(ctx, u.contextTimeout)
-	defer cancel()
-	
-	// Get episode
-	episode, err := u.repo.GetEpisodeByID(ctx, id)
-	if err != nil {
-		return err
-	}
-	
-	// Get podcast to check ownership
-	podcast, err := u.repo.GetPodcastByID(ctx, episode.PodcastID)
-	if err != nil {
-		return err
-	}
-	
-	// Check if user is authorized to delete episode
-	if podcast.PodcasterID != userID {
-		return errors.New("not authorized")
-	}
-	
-	// Delete episode from database
-	return u.repo.DeleteEpisode(ctx, id)
 }
 
 // GetCategories gets all categories
@@ -577,17 +515,4 @@ func (u *usecase) GetLikedEpisodes(ctx context.Context, listenerID uuid.UUID, pa
 	}
 	
 	return episodeResponses, totalCount, nil
-}
-
-// SyncPodcastFromRSS syncs a podcast from its RSS feed
-func (u *usecase) SyncPodcastFromRSS(ctx context.Context, podcastID uuid.UUID) error {
-	// In a real implementation, this would:
-	// 1. Get the podcast from the database
-	// 2. Fetch the RSS feed using a package like github.com/mmcdole/gofeed
-	// 3. Update podcast metadata
-	// 4. Create new episodes found in the feed
-	// 5. Update the last_synced_at timestamp
-	
-	// For this example, we'll just return nil
-	return nil
 }
