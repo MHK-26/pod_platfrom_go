@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/your-username/podcast-platform/pkg/auth/delivery/http/handlers"
-	"github.com/your-username/podcast-platform/pkg/auth/repository/postgres"
-	"github.com/your-username/podcast-platform/pkg/auth/usecase"
-	"github.com/your-username/podcast-platform/pkg/common/config"
-	"github.com/your-username/podcast-platform/pkg/common/database"
-	"github.com/your-username/podcast-platform/pkg/common/middleware"
+	"github.com/MHK-26/pod_platfrom_go/pkg/auth/delivery/http/handlers"
+	"github.com/MHK-26/pod_platfrom_go/pkg/auth/repository/postgres"
+	"github.com/MHK-26/pod_platfrom_go/pkg/auth/usecase"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/config"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/database"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/middleware"
 )
 
 func main() {

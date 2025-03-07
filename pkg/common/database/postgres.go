@@ -8,7 +8,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq" // PostgreSQL driver
-	"github.com/your-username/podcast-platform/pkg/common/config"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/config"
 )
 
 // NewPostgresDB creates a new PostgreSQL connection

@@ -5,9 +5,9 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/your-username/podcast-platform/pkg/recommendation/models"
-	"github.com/your-username/podcast-platform/pkg/recommendation/usecase"
-	pb "github.com/your-username/podcast-platform/api/proto/recommendation"
+	"github.com/MHK-26/pod_platfrom_go/pkg/recommendation/models"
+	"github.com/MHK-26/pod_platfrom_go/pkg/recommendation/usecase"
+	pb "github.com/MHK-26/pod_platfrom_go/api/proto/recommendation"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

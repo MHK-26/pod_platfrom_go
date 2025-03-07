@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/your-username/podcast-platform/pkg/content/models"
+	"github.com/MHK-26/pod_platfrom_go/pkg/content/models"
 )
 
 // Parser defines the interface for RSS feed parser

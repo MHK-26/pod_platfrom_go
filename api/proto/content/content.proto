@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package content;
 
-option go_package = "github.com/your-username/podcast-platform/api/proto/content";
+option go_package = "github.com/MHK-26/pod_platfrom_go/api/proto/content";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/empty.proto";

@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/your-username/podcast-platform/pkg/auth/usecase"
-	"github.com/your-username/podcast-platform/pkg/common/utils"
+	"github.com/MHK-26/pod_platfrom_go/pkg/auth/usecase"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/utils"
 )
 
 // AuthMiddleware is a middleware for authenticating requests

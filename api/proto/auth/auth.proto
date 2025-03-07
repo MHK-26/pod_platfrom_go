@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package auth;
 
-option go_package = "github.com/your-username/podcast-platform/api/proto/auth";
+option go_package = "github.com/MHK-26/pod_platfrom_go/api/proto/auth";
 
 import "google/protobuf/timestamp.proto";
 

@@ -6,9 +6,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/your-username/podcast-platform/pkg/common/utils"
-	"github.com/your-username/podcast-platform/pkg/recommendation/models"
-	"github.com/your-username/podcast-platform/pkg/recommendation/usecase"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/utils"
+	"github.com/MHK-26/pod_platfrom_go/pkg/recommendation/models"
+	"github.com/MHK-26/pod_platfrom_go/pkg/recommendation/usecase"
 )
 
 // Handler is the HTTP handler for the recommendation service

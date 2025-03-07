@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/your-username/podcast-platform/pkg/auth/models"
-	"github.com/your-username/podcast-platform/pkg/auth/usecase"
-	pb "github.com/your-username/podcast-platform/api/proto/auth"
+	"github.com/MHK-26/pod_platfrom_go/pkg/auth/models"
+	"github.com/MHK-26/pod_platfrom_go/pkg/auth/usecase"
+	pb "github.com/MHK-26/pod_platfrom_go/api/proto/auth"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"

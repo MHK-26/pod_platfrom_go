@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/your-username/podcast-platform/pkg/common/config"
-	"github.com/your-username/podcast-platform/pkg/recommendation/models"
-	"github.com/your-username/podcast-platform/pkg/recommendation/repository/postgres"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/config"
+	"github.com/MHK-26/pod_platfrom_go/pkg/recommendation/models"
+	"github.com/MHK-26/pod_platfrom_go/pkg/recommendation/repository/postgres"
 )
 
 // Usecase defines the methods for the recommendation usecase

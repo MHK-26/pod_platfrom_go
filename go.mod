@@ -1,4 +1,4 @@
-module github.com/MHK-26/podcast-platform
+module github.com/MHK-26/pod_platfrom_go
 
 go 1.20
 

@@ -12,14 +12,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/your-username/podcast-platform/pkg/common/config"
-	"github.com/your-username/podcast-platform/pkg/common/database"
-	"github.com/your-username/podcast-platform/pkg/common/logger"
-	"github.com/your-username/podcast-platform/pkg/common/middleware"
-	analyticsRepo "github.com/your-username/podcast-platform/pkg/analytics/repository/postgres"
-	analyticsUsecase "github.com/your-username/podcast-platform/pkg/analytics/usecase"
-	analyticsHttp "github.com/your-username/podcast-platform/pkg/analytics/delivery/http"
-	authUsecase "github.com/your-username/podcast-platform/pkg/auth/usecase"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/config"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/database"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/logger"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/middleware"
+	analyticsRepo "github.com/MHK-26/pod_platfrom_go/pkg/analytics/repository/postgres"
+	analyticsUsecase "github.com/MHK-26/pod_platfrom_go/pkg/analytics/usecase"
+	analyticsHttp "github.com/MHK-26/pod_platfrom_go/pkg/analytics/delivery/http"
+	authUsecase "github.com/MHK-26/pod_platfrom_go/pkg/auth/usecase"
 )
 
 func main() {

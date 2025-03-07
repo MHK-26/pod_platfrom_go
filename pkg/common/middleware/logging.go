@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/your-username/podcast-platform/pkg/common/logger"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/logger"
 	"go.uber.org/zap"
 )
 

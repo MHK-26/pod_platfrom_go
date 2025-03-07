@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/your-username/podcast-platform/pkg/recommendation/models"
+	"github.com/MHK-26/pod_platfrom_go/pkg/recommendation/models"
 )
 
 // Repository defines the methods for the recommendation repository

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package recommendation;
 
-option go_package = "github.com/your-username/podcast-platform/api/proto/recommendation";
+option go_package = "github.com/MHK-26/pod_platfrom_go/api/proto/recommendation";
 
 service RecommendationService {
   // User-based recommendations

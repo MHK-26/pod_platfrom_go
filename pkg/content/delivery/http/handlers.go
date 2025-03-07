@@ -9,9 +9,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/your-username/podcast-platform/pkg/content/models"
-	"github.com/your-username/podcast-platform/pkg/content/usecase"
-	"github.com/your-username/podcast-platform/pkg/common/utils"
+	"github.com/MHK-26/pod_platfrom_go/pkg/content/models"
+	"github.com/MHK-26/pod_platfrom_go/pkg/content/usecase"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/utils"
 )
 
 // Handler is the HTTP handler for the content service

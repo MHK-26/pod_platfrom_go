@@ -12,17 +12,17 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/your-username/podcast-platform/pkg/common/config"
-	"github.com/your-username/podcast-platform/pkg/common/database"
-	"github.com/your-username/podcast-platform/pkg/common/logger"
-	"github.com/your-username/podcast-platform/pkg/common/middleware"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/config"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/database"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/logger"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/middleware"
 	
-	authUsecase "github.com/your-username/podcast-platform/pkg/auth/usecase"
-	contentRepo "github.com/your-username/podcast-platform/pkg/content/repository/postgres"
-	contentUsecase "github.com/your-username/podcast-platform/pkg/content/usecase"
-	contentHttp "github.com/your-username/podcast-platform/pkg/content/delivery/http"
-	contentRSS "github.com/your-username/podcast-platform/pkg/content/rss"
-	contentSync "github.com/your-username/podcast-platform/pkg/content/sync"
+	authUsecase "github.com/MHK-26/pod_platfrom_go/pkg/auth/usecase"
+	contentRepo "github.com/MHK-26/pod_platfrom_go/pkg/content/repository/postgres"
+	contentUsecase "github.com/MHK-26/pod_platfrom_go/pkg/content/usecase"
+	contentHttp "github.com/MHK-26/pod_platfrom_go/pkg/content/delivery/http"
+	contentRSS "github.com/MHK-26/pod_platfrom_go/pkg/content/rss"
+	contentSync "github.com/MHK-26/pod_platfrom_go/pkg/content/sync"
 )
 
 func main() {

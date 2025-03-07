@@ -9,9 +9,9 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
-	"github.com/your-username/podcast-platform/pkg/auth/models"
-	"github.com/your-username/podcast-platform/pkg/auth/repository/postgres"
-	"github.com/your-username/podcast-platform/pkg/common/config"
+	"github.com/MHK-26/pod_platfrom_go/pkg/auth/models"
+	"github.com/MHK-26/pod_platfrom_go/pkg/auth/repository/postgres"
+	"github.com/MHK-26/pod_platfrom_go/pkg/common/config"
 	"golang.org/x/crypto/bcrypt"
 )
 

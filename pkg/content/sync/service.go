@@ -10,9 +10,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/your-username/podcast-platform/pkg/content/models"
-	"github.com/your-username/podcast-platform/pkg/content/repository/postgres"
-	"github.com/your-username/podcast-platform/pkg/content/rss"
+	"github.com/MHK-26/pod_platfrom_go/pkg/content/models"
+	"github.com/MHK-26/pod_platfrom_go/pkg/content/repository/postgres"
+	"github.com/MHK-26/pod_platfrom_go/pkg/content/rss"
 )
 
 // Service defines the interface for the RSS sync service
